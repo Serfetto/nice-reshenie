@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ВКД · внешние риски</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='%231b6fd6'/></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/vendor/plotly.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">ВКД <span>· внешние риски и окна работ МКС</span></div>
+  <div id="modeBadge" class="badge hidden"></div>
+  <div id="srcChips" class="chips" title="Состояние источников данных"></div>
+  <div class="spacer"></div>
+  <label class="toggle" title="Только рекомендация и окна — для передачи руководителю">
+    <input type="checkbox" id="simpleToggle"> Упрощённый вид
+  </label>
+  <button id="bell" class="bell" type="button">Оповещения <span id="bellCount" class="count">0</span></button>
+  <div id="clock" class="clock"></div>
+</header>
+
+<div class="layout">
+  <aside class="side">
+    <form id="form" autocomplete="off">
+      <div class="seg" id="modeSeg" role="tablist">
+        <button type="button" data-mode="now">Сейчас</button>
+        <button type="button" data-mode="replay" class="on">Прогноз из прошлого</button>
+        <button type="button" data-mode="review">Разбор</button>
+      </div>
+      <p class="hint" id="modeHint"></p>
+
+      <div class="presets" id="presets">
+        <span>Примеры:</span>
+        <button type="button" data-preset="0608">08.06 · S3, нарастание</button>
+        <button type="button" data-preset="0510">10.05 · протоны + буря</button>
+        <button type="button" data-preset="0511">11.05 · разбор бури G5</button>
+        <button type="button" data-preset="0526">26.05 · спокойно</button>
+      </div>
+
+      <label id="asOfWrap">Момент T, UTC
+        <input type="datetime-local" id="asOf" step="60">
+      </label>
+      <div class="row2">
+        <label>Длительность, ч <input type="number" id="durH" min="1" max="8" value="6"></label>
+        <label>мин <input type="number" id="durM" min="0" max="55" step="5" value="30"></label>
+      </div>
+      <label>Раннее начало, UTC <span class="opt">по умолчанию — T</span>
+        <input type="datetime-local" id="earliest" step="60">
+      </label>
+      <label>Позднее начало, UTC <span class="opt">по умолчанию — +24 ч</span>
+        <input type="datetime-local" id="latest" step="60">
+      </label>
+      <label>Плановое начало, UTC <span class="opt">необязательно</span>
+        <input type="datetime-local" id="planned" step="60">
+      </label>
+
+      <details class="pro-only">
+        <summary>Параметры ВКД и модели</summary>
+        <label>Время возвращения в шлюз, мин <input type="number" id="retMin" min="0" max="240" value="30"></label>
+        <label>Запас на задержку работ, мин <input type="number" id="marginMin" min="0" max="240" value="60"></label>
+        <label>Шаг перебора окон, мин <input type="number" id="stepMin" min="5" max="60" value="15"></label>
+        <label>Модель радиационного прогноза
+          <select id="model">
+            <option value="team">команды: рост/спад 6 ч + SWPC</option>
+            <option value="persistence">базовая: последнее наблюдение</option>
+            <option value="swpc_only">базовая: только предупреждения SWPC</option>
+          </select>
+        </label>
+      </details>
+      <details class="pro-only">
+        <summary>Источники в этом расчёте</summary>
+        <p class="hint">Отключение или заморозка действует только на этот расчёт — для проверки поведения при сбое.</p>
+        <div id="overrides"></div>
+      </details>
+
+      <button type="submit" id="runBtn" class="primary">Рассчитать</button>
+      <div id="progress" class="progress hidden"><div class="bar"><i></i></div><span></span></div>
+      <div id="formErr" class="err"></div>
+    </form>
+
+    <section class="side-sec">
+      <h3>Последние расчёты</h3>
+      <ul id="runsList" class="list"></ul>
+    </section>
+  </aside>
+
+  <main>
+    <section id="empty" class="empty">
+      <h1>Выбор окна для выхода в открытый космос</h1>
+      <p>Задайте длительность выхода и период, в который его можно начать. Сервис рассчитает положение МКС,
+        оценит радиационную обстановку на траектории (солнечные протоны с учётом магнитного поля, проходы ЮАА)
+        и сближения с отслеживаемыми объектами, сравнит окна одинаковой длительности и покажет, на каких данных
+        основан каждый вывод.</p>
+      <p>Режим «Прогноз из прошлого» считает так, будто сейчас момент T: видны только данные, опубликованные до него.
+        Для проверки — «Что было на самом деле».</p>
+      <p class="muted">Оценки описывают внешние условия, а не дозу облучения. Решение о выходе принимают уполномоченные специалисты.</p>
+    </section>
+
+    <section id="result" class="hidden">
+      <div id="planBanner" class="banner hidden"></div>
+      <div class="card rec" id="recCard"></div>
+
+      <div class="card pro-only">
+        <div class="card-h">
+          <h2>Временная шкала</h2>
+          <div class="legend">
+            <span><i class="c-critical"></i>критично</span><span><i class="c-undesirable"></i>нежелательно</span>
+            <span><i class="c-acceptable"></i>приемлемо</span><span><i class="c-no_data"></i>нет данных</span>
+            <span class="muted">клик по полосе — доказательства</span>
+          </div>
+        </div>
+        <div id="timeline"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <h2>Окна одинаковой длительности</h2>
+          <div class="ctrls">
+            <label class="inline">Сдвиг начала <input type="range" id="shift" min="0" max="0" value="0"> <b id="shiftLabel"></b></label>
+            <label class="inline pro-only">Длительность, мин <input type="number" id="durEdit" min="60" max="480" step="15"></label>
+            <button type="button" id="durBtn" class="pro-only">Пересчитать план</button>
+            <label class="inline"><input type="checkbox" id="hideBad"> скрыть не рекомендуемые</label>
+          </div>
+        </div>
+        <div id="winDetail" class="win-detail"></div>
+        <div class="tablewrap"><table id="winTable" class="tbl"></table></div>
+      </div>
+
+      <div class="tabs pro-only" id="tabs">
+        <button type="button" data-tab="map" class="on">Трасса</button>
+        <button type="button" data-tab="sources">Источники и данные</button>
+        <button type="button" data-tab="verify">Что было на самом деле</button>
+        <button type="button" data-tab="export">Сохранить</button>
+      </div>
+      <div class="card pro-only tabpane" id="tab-map"><div id="map"></div><p class="hint" id="mapHint"></p></div>
+      <div class="card pro-only tabpane hidden" id="tab-sources"></div>
+      <div class="card pro-only tabpane hidden" id="tab-verify"></div>
+      <div class="card pro-only tabpane hidden" id="tab-export"></div>
+    </section>
+  </main>
+</div>
+
+<div id="drawer" class="drawer hidden" aria-hidden="true">
+  <div class="drawer-h"><h3 id="drawerTitle">Доказательства</h3><button type="button" id="drawerClose">×</button></div>
+  <div id="drawerBody"></div>
+</div>
+<div id="toasts" class="toasts"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+# Запуск:   docker compose up -d --build
+# Архив:    docker compose --profile setup run --rm backfill
+# Консоль:  http://<сервер>:8000  (наружу открыт только report; ingest и assessment — на 127.0.0.1)
+# Проверка: curl http://localhost:8000/health
+
+x-backend: &backend
+  build: .
+  image: kosmohack-eva-backend:latest
+  env_file: .env
+  environment: &backend-env
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kh}:${POSTGRES_PASSWORD:-kh}@db:5432/${POSTGRES_DB:-kh}
+    DATA_DIR: /app/data
+  volumes:
+    - ./data:/app/data
+  depends_on:
+    db:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kh}
+      POSTGRES_DB: ${POSTGRES_DB:-kh}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Сбор данных: планировщик по источникам + API статусов, сырья и выгрузки CSV
+  ingest:
+    <<: *backend
+    command: ["uvicorn", "services.ingest.api:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      <<: *backend-env
+      INGEST_SCHEDULER: "1"
+    ports:
+      - "127.0.0.1:${INGEST_PORT:-8001}:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Оценка окон: расчёты, сверка прогноза из прошлого, отслеживание окон и оповещения
+  assessment:
+    <<: *backend
+    command: ["uvicorn", "services.assessment.api:app", "--host", "0.0.0.0", "--port", "8002"]
+    environment:
+      <<: *backend-env
+      WATCHER: "1"
+    ports:
+      - "127.0.0.1:${ASSESSMENT_PORT:-8002}:8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Веб-консоль аналитика, отчёты, экспорт, доставка оповещений (SSE); проксирует ingest и assessment
+  report:
+    <<: *backend
+    command: ["uvicorn", "services.report.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      ASSESSMENT_URL: http://assessment:8002
+      INGEST_URL: http://ingest:8001
+    depends_on:
+      - assessment
+      - ingest
+    ports:
+      - "${REPORT_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Разовая загрузка архива за проверочный период (май–июнь 2024)
+  backfill:
+    <<: *backend
+    profiles: ["setup"]
+    restart: "no"
+    command: ["python", "-m", "services.ingest.cli", "backfill", "--from", "2024-05-01", "--to", "2024-06-30"]
+
+volumes:
+  pgdata:
