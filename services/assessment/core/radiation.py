@@ -414,7 +414,8 @@ def assess_radiation(sl: DataSlice, track: orbit.Track, cfg: dict, model: str = 
                 conf[i] = "low"
 
     series = {"p_ge10": J[:, 0], "p_ge100": J[:, energies.index(100.0)], "j_iss": j_iss, "kp": kp,
-              "rc_gv": rc, "e_cut_mev": e_cut, "saa": saa.astype(float), "prob_sep": prob}
+              "rc_gv": rc, "e_cut_mev": e_cut, "saa": saa.astype(float), "prob_sep": prob,
+              "kp_assumed": (kp_kind == "assumed").astype(float)}
     return MechanismTimeline(name="radiation", times=grid, cls=cls, reason=reason, kind=kind, confidence=conf,
                              evidence=ev, evidence_items=evidence, series=series, notes=notes,
                              events=[{"code": m.code, "serial": m.serial, "begin": iso(b), "end": iso(e)}
