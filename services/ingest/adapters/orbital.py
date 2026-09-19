@@ -163,7 +163,7 @@ class CatalogSpaceTrack(_SpaceTrackAdapter):
                 self._fetch(engine, f"/basicspacedata/query/class/gp_history/EPOCH/{d:%Y-%m-%d}--"
                                     f"{d + timedelta(days=1):%Y-%m-%d}/PERIAPSIS/<{hi:.0f}/APOAPSIS/>{lo:.0f}"
                                     f"/predicates/{FIELDS}/format/json", result)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - keep other archive days usable after one failure
                 result.errors.append(f"{d}: {e}")
             d += timedelta(days=1)
         return result

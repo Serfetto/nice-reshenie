@@ -111,7 +111,7 @@ class SwpcAlerts(Adapter):
             url = self.cfg["archive_url"].format(yyyymm=f"{y}{m:02d}")
             try:
                 self.fetch_and_store(engine, url, result, not_found_ok=True)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - a missing monthly archive must not halt backfill
                 result.errors.append(str(e))
             y, m = (y + 1, 1) if m == 12 else (y, m + 1)
         return result

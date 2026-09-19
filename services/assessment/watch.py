@@ -239,7 +239,7 @@ def _process(w) -> None:
         _deliver(w, items, parse_iso(cur["as_of"]), parse_iso(cur.get("latest_issued")))
         values["last_snapshot"] = cur
         values["error"] = None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - a watch must record an error instead of silently stopping
         log.exception("Отслеживание %s: ошибка расчёта", w.id)
         values["error"] = f"{type(e).__name__}: {e}"
     with get_engine().begin() as conn:
@@ -268,7 +268,7 @@ def _loop() -> None:
         _wake.clear()
         try:
             tick(force_now=forced)
-        except Exception:
+        except Exception:  # noqa: BLE001 - scheduler loop survives a failed individual tick
             log.exception("Ошибка такта отслеживания")
 
 
@@ -285,7 +285,7 @@ def _listen_pg() -> None:
                 conn.execute("LISTEN new_data")
                 for _n in conn.notifies():
                     _wake.set()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - listener process must reconnect after any driver failure
             log.warning("LISTEN new_data прерван: %s — повтор через 10 с", e)
             time.sleep(10)
 

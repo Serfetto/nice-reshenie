@@ -1,15 +1,17 @@
-numpy>=2.0
-pandas>=2.2
-netCDF4>=1.7
-sgp4>=2.23
-ppigrf>=2.1
-SQLAlchemy>=2.0
-psycopg[binary]>=3.2
-fastapi>=0.115
-uvicorn[standard]>=0.30
-APScheduler>=3.10,<4
-httpx>=0.27
-PyYAML>=6.0
-python-dotenv>=1.0
-pytest>=8.0
-Jinja2>=3.1
+# Полностью зафиксированный набор, проверенный в Docker (Python 3.12) и локально.
+# Обновление зависимостей — отдельным осознанным коммитом с прогоном CI.
+numpy==2.5.3
+pandas==3.0.6
+netCDF4==1.7.4
+sgp4==2.27
+ppigrf==2.1.0
+SQLAlchemy==2.0.54
+psycopg[binary]==3.3.6
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+APScheduler==3.11.3
+httpx==0.28.1
+PyYAML==6.0.3
+python-dotenv==1.2.3
+pytest==9.1.1
+Jinja2==3.1.6

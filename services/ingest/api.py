@@ -117,7 +117,7 @@ def _refresh_worker(name: str, force: bool) -> None:
         res = registry.run_live(get_engine(), name, force=force)
         st = {"state": "error" if res.errors and not res.files else "done", "new_items": res.new_items,
               "files": res.files, "errors": res.errors[:5], "skipped": bool(res.skipped)}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - HTTP worker boundary returns a visible source error
         st = {"state": "error", "new_items": 0, "files": 0, "errors": [f"{type(e).__name__}: {e}"]}
     with _refresh_lock:
         REFRESH[name] = {**REFRESH.get(name, {}), **st, "finished_at": iso(utcnow())}

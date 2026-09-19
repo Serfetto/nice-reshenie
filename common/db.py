@@ -249,7 +249,7 @@ def init_db(engine: Engine | None = None) -> None:
             metadata.create_all(engine)
             _add_missing_columns(engine)
             return
-        except Exception:
+        except Exception:  # noqa: BLE001 - database startup retries transient driver and network errors
             if attempt == 5:
                 raise
             time.sleep(1 + attempt)

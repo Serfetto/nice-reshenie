@@ -99,7 +99,7 @@ def _run_assessment(run_id: str, req: RunRequest) -> None:
              progress={"stage": "done", "pct": 100})
     except RunError as e:
         _set(run_id, status="failed", error=str(e), finished_at=utcnow())
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - boundary of a background job; persist any failure for the user
         log.error("Расчёт %s упал:\n%s", run_id, traceback.format_exc())
         _set(run_id, status="failed", error=f"Внутренняя ошибка: {type(e).__name__}: {e}", finished_at=utcnow())
 
@@ -113,7 +113,7 @@ def _run_verify(run_id: str, parent: dict, parent_request: dict) -> None:
         _set(run_id, status="done", result=result, finished_at=utcnow(), progress={"stage": "done", "pct": 100})
     except RunError as e:
         _set(run_id, status="failed", error=str(e), finished_at=utcnow())
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - boundary of a background verification job; persist any failure
         log.error("Сверка %s упала:\n%s", run_id, traceback.format_exc())
         _set(run_id, status="failed", error=f"Внутренняя ошибка: {type(e).__name__}: {e}", finished_at=utcnow())
 

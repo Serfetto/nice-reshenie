@@ -68,7 +68,7 @@ def main(argv=None):
                     n = adapter.parse(conn, r.id, content, r.url, r.fetched_at)
                     mark_parsed(conn, r.id, "ok", n)
                     total += n
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - reparse continues and marks this raw file as failed
                     mark_parsed(conn, r.id, "error", 0, str(e))
         print(json.dumps({"source": args.source, "files": len(rows), "new_items": total}, ensure_ascii=False))
 

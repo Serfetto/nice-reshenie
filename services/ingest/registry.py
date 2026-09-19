@@ -52,7 +52,7 @@ def _run_live(engine: Engine, adapter: Adapter, *, force: bool) -> IngestResult:
             return IngestResult(name, skipped=1)
     try:
         result = adapter.live(engine)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - scheduler boundary converts an adapter fault into source status
         log.warning("%s: ошибка загрузки: %s", name, e)
         with engine.begin() as conn:
             status_error(conn, name, str(e))

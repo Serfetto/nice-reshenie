@@ -2,7 +2,7 @@
 import numpy as np
 
 from services.assessment.core import orbit
-from services.assessment.core.radiation import integral_above
+from services.assessment.core.radiation import _robust_log_trend, integral_above
 
 
 def test_rigidity_energy():
@@ -47,3 +47,15 @@ def test_integral_monotonic_with_background():
     j = np.array([[0.25, 0.22, 0.21, 0.21, 0.24]])
     v = integral_above(np.array([600.0]), e, j)[0]
     assert v <= 0.25
+
+
+def test_robust_log_trend_resists_single_goes_outlier():
+    """Один ошибочный 5-минутный отсчёт не меняет фазу прогноза."""
+    t = np.arange(37, dtype="timedelta64[m]") * 5 + np.datetime64("2024-06-08T03:00")
+    # Ровный рост e^0.25 в час, но один отсчёт испорчен на два порядка.
+    v = np.exp(np.arange(37) * 5 / 60 * 0.25)
+    v[18] *= 100
+    rate, sigma, count = _robust_log_trend(t, v, t[-1], 3)
+    assert count == 36
+    assert abs(rate - 0.25) < 0.01
+    assert sigma is not None and sigma < 0.05

@@ -85,7 +85,7 @@ class Adapter:
         """Догрузка пропуска внутри живого опроса: ошибка не срывает основной опрос, а попадает в результат."""
         try:
             result.merge(fn())
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - optional backfill must not abort a successful live poll
             log.warning("%s: догрузка %s не удалась: %s", self.name, what, e)
             result.errors.append(f"догрузка {what}: {e}")
 
@@ -117,7 +117,7 @@ class Adapter:
                     n = self.parse(conn, raw_id, resp.content, url, utcnow())
                 mark_parsed(conn, raw_id, "ok", n)
                 result.new_items += n
-            except Exception as e:  # сырьё сохраняем даже при ошибке разбора
+            except Exception as e:  # noqa: BLE001 - preserve raw evidence even if an untrusted file fails to parse
                 log.exception("%s: ошибка разбора %s", self.name, url)
                 mark_parsed(conn, raw_id, "error", 0, f"{type(e).__name__}: {e}")
                 result.errors.append(f"разбор {url}: {e}")

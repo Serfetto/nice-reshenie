@@ -158,10 +158,16 @@ python -m scripts.experiments_mmod                         # ~15 мин: уст�
 (`result.config`), манифест использованных сырых файлов (`result.manifest`) и доказательства со ссылками `raw_id` +
 локатор. Сырые файлы не перезаписываются. Примеры сохранённых расчётов — [examples/](examples/).
 
+Среда также закреплена: `requirements.txt` содержит точные версии runtime-зависимостей, а полный разрешённый набор
+(включая транзитивные зависимости и линтер) — `requirements.lock`. GitHub Actions на каждом push/PR устанавливает
+этот набор в Python 3.12, выполняет `ruff check .` (в том
+числе запрещает немотивированные широкие `except`) и
+`pytest`. Локально тот же контроль: `pip install -r requirements.txt -r requirements-dev.txt && ruff check . && pytest`.
+
 ## Библиотеки
 
-Проверено на Python 3.14 (локально) и 3.12 (Docker-образ); версии — те, на которых проверено, в `requirements.txt` —
-нижние границы.
+Проверено на Python 3.14 (локально) и 3.12 (Docker-образ); в `requirements.txt` / `requirements.lock` зафиксированы
+точные версии.
 
 | Библиотека | Версия | Роль |
 |---|---|---|
