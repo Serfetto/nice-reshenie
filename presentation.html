@@ -1,0 +1,966 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Прогнозирование рисков ВКД — презентация</title>
+  <style>
+    :root {
+      --ink: #f4f7fb;
+      --muted: #9aa9bc;
+      --dim: #65758a;
+      --bg: #05070b;
+      --panel: rgba(15, 23, 34, .88);
+      --panel-2: rgba(21, 32, 47, .74);
+      --line: rgba(172, 201, 230, .16);
+      --cyan: #59e4ff;
+      --cyan-2: #0eb5d4;
+      --orange: #ff9b55;
+      --red: #ff6474;
+      --green: #7ee0aa;
+      --yellow: #ffd66b;
+      --purple: #a99cff;
+      --shadow: 0 24px 80px rgba(0, 0, 0, .44);
+      --pad-x: clamp(34px, 5vw, 86px);
+      --pad-y: clamp(30px, 4.7vh, 58px);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body {
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button { font: inherit; }
+    .deck { position: relative; width: 100vw; height: 100svh; overflow: hidden; isolation: isolate; }
+    .deck::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -3;
+      background:
+        radial-gradient(circle at 84% 14%, rgba(36, 170, 214, .15), transparent 30%),
+        radial-gradient(circle at 12% 86%, rgba(255, 112, 78, .08), transparent 32%),
+        linear-gradient(135deg, #06090f 0%, #08101a 44%, #040609 100%);
+    }
+    .deck::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      opacity: .24;
+      background-image:
+        linear-gradient(rgba(132, 163, 196, .06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(132, 163, 196, .06) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: linear-gradient(to bottom, black, transparent 90%);
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: clamp(18px, 2.7vh, 34px);
+      padding: var(--pad-y) var(--pad-x) calc(var(--pad-y) + 16px);
+      overflow: hidden;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateX(48px) scale(.985);
+      transition: opacity .42s ease, transform .42s ease, visibility .42s;
+      pointer-events: none;
+    }
+    .slide.active { opacity: 1; visibility: visible; transform: none; pointer-events: auto; z-index: 1; }
+    .slide.leaving { opacity: 0; visibility: visible; transform: translateX(-42px) scale(.985); }
+    .slide::before {
+      content: attr(data-section);
+      position: absolute;
+      top: 50%; right: -1.1vw;
+      writing-mode: vertical-rl;
+      transform: translateY(-50%);
+      font-size: clamp(58px, 8vw, 132px);
+      line-height: .8;
+      font-weight: 800;
+      letter-spacing: -.06em;
+      color: rgba(255,255,255,.018);
+      pointer-events: none;
+    }
+
+    .slide-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 30px; }
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--cyan);
+      font-size: clamp(11px, .9vw, 15px);
+      font-weight: 760;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    .slide-no {
+      flex: 0 0 auto;
+      color: var(--dim);
+      font-size: 14px;
+      letter-spacing: .16em;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      max-width: 980px;
+      margin-bottom: 22px;
+      font-size: clamp(52px, 6.7vw, 104px);
+      line-height: .94;
+      letter-spacing: -.055em;
+      font-weight: 780;
+    }
+    h2 {
+      max-width: 1120px;
+      margin: 0;
+      font-size: clamp(37px, 4.3vw, 66px);
+      line-height: 1.02;
+      letter-spacing: -.045em;
+      font-weight: 750;
+    }
+    h3 {
+      margin-bottom: 10px;
+      font-size: clamp(18px, 1.55vw, 25px);
+      line-height: 1.12;
+      letter-spacing: -.02em;
+    }
+    p { font-size: clamp(15px, 1.2vw, 20px); line-height: 1.45; }
+    .lead { color: #ccd8e5; font-size: clamp(19px, 1.75vw, 29px); line-height: 1.37; }
+    .muted { color: var(--muted); }
+    .small { font-size: clamp(12px, .95vw, 15px); line-height: 1.45; }
+    .micro { font-size: clamp(10px, .78vw, 13px); line-height: 1.4; }
+    .accent { color: var(--cyan); }
+    .warm { color: var(--orange); }
+    .danger { color: var(--red); }
+    .good { color: var(--green); }
+    .nowrap { white-space: nowrap; }
+    .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
+    .content { min-height: 0; align-self: stretch; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(18px, 2vw, 32px); min-height: 0; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(14px, 1.5vw, 24px); min-height: 0; }
+    .split-45 { grid-template-columns: .82fr 1.18fr; }
+    .split-60 { grid-template-columns: 1.2fr .8fr; }
+    .stack { display: grid; align-content: start; gap: 14px; min-height: 0; }
+    .center { display: grid; place-items: center; }
+
+    .card {
+      position: relative;
+      padding: clamp(18px, 1.8vw, 28px);
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(145deg, rgba(21, 32, 47, .9), rgba(9, 15, 23, .8));
+      box-shadow: var(--shadow);
+    }
+    .card.soft { background: rgba(15, 23, 34, .62); box-shadow: none; }
+    .card.cyan { border-color: rgba(89, 228, 255, .34); }
+    .card.orange { border-color: rgba(255, 155, 85, .34); }
+    .card.red { border-color: rgba(255, 100, 116, .38); }
+    .card::after {
+      content: "";
+      position: absolute;
+      inset: auto -15% -45% auto;
+      width: 180px; height: 180px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(89,228,255,.07), transparent 67%);
+      pointer-events: none;
+    }
+    .tag, .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-radius: 999px;
+      white-space: nowrap;
+      font-size: clamp(10px, .8vw, 13px);
+      font-weight: 720;
+      letter-spacing: .055em;
+      text-transform: uppercase;
+    }
+    .tag { padding: 7px 10px; color: var(--cyan); border: 1px solid rgba(89, 228, 255, .25); background: rgba(89, 228, 255, .07); }
+    .pill { padding: 7px 11px; color: #d6e4f1; background: rgba(255,255,255,.07); }
+    .pill.red { color: #ffd7db; background: rgba(255, 100, 116, .14); }
+    .pill.yellow { color: #ffefbd; background: rgba(255, 214, 107, .13); }
+    .pill.green { color: #c9f8dc; background: rgba(126, 224, 170, .13); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 14px currentColor; }
+    .kicker { color: var(--muted); font-size: clamp(12px, .95vw, 15px); letter-spacing: .08em; text-transform: uppercase; }
+    .metric { font-size: clamp(38px, 4.8vw, 74px); line-height: .95; letter-spacing: -.055em; font-weight: 760; }
+    .metric-sm { font-size: clamp(28px, 3vw, 48px); line-height: 1; letter-spacing: -.045em; font-weight: 760; }
+    .rule { width: 100%; height: 1px; background: var(--line); }
+    .icon-box {
+      display: grid; place-items: center;
+      width: 44px; height: 44px;
+      border: 1px solid rgba(89,228,255,.25);
+      border-radius: 13px;
+      color: var(--cyan);
+      background: rgba(89,228,255,.075);
+    }
+    .icon-box svg { width: 25px; height: 25px; }
+    ul.clean { margin: 0; padding: 0; list-style: none; }
+    ul.clean li { position: relative; padding-left: 19px; margin: 0 0 10px; color: #c7d3e0; font-size: clamp(14px, 1.05vw, 18px); line-height: 1.4; }
+    ul.clean li::before { content: ""; position: absolute; left: 0; top: .62em; width: 7px; height: 2px; background: var(--cyan); }
+
+    /* Cover */
+    .cover { grid-template-rows: 1fr auto; }
+    .cover .content { display: grid; grid-template-columns: 1.12fr .88fr; align-items: center; gap: 5vw; }
+    .cover .lead { max-width: 820px; margin-bottom: 28px; }
+    .cover-mark { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+    .cover-mark .seal { width: 38px; height: 38px; border: 1px solid rgba(89,228,255,.45); border-radius: 50%; position: relative; }
+    .cover-mark .seal::before { content: ""; position: absolute; inset: 8px -7px; border-top: 1px solid var(--cyan); transform: rotate(-24deg); }
+    .cover-orbit { position: relative; min-height: 470px; display: grid; place-items: center; }
+    .planet {
+      position: relative;
+      width: min(32vw, 430px); aspect-ratio: 1;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 34% 26%, rgba(255,255,255,.24), transparent 8%),
+        radial-gradient(circle at 40% 38%, #174460, #0b2234 53%, #061018 72%);
+      box-shadow: inset -38px -30px 80px rgba(0,0,0,.65), 0 0 110px rgba(44,178,222,.16);
+    }
+    .planet::before, .planet::after {
+      content: ""; position: absolute; inset: -12%; border: 1px solid rgba(89,228,255,.37); border-radius: 50%; transform: rotate(-23deg) scaleY(.36);
+    }
+    .planet::after { inset: -27%; border-color: rgba(255,255,255,.11); transform: rotate(29deg) scaleY(.36); }
+    .iss-mark {
+      position: absolute; right: 2%; top: 17%; display: grid; place-items: center;
+      width: 82px; height: 38px; color: var(--cyan); filter: drop-shadow(0 0 18px rgba(89,228,255,.55)); transform: rotate(-16deg);
+    }
+    .iss-mark svg { width: 100%; height: 100%; }
+    .orbit-label { position: absolute; right: 5%; bottom: 10%; width: 210px; }
+    .cover-footer { display: grid; grid-template-columns: 1fr repeat(3, auto); gap: 36px; align-items: end; padding-top: 18px; border-top: 1px solid var(--line); }
+    .cover-stat { min-width: 145px; }
+    .cover-stat strong { display: block; margin-bottom: 4px; font-size: 23px; }
+
+    /* Journey and interface */
+    .journey { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; align-items: stretch; }
+    .journey-step { position: relative; padding: 20px 18px; border: 1px solid var(--line); border-radius: 18px; background: rgba(15,23,34,.62); }
+    .journey-step:not(:last-child)::after { content: "→"; position: absolute; z-index: 2; right: -15px; top: 50%; transform: translateY(-50%); color: var(--cyan); font-weight: 700; }
+    .journey-step .num { color: var(--cyan); font: 700 13px/1 "Cascadia Code", monospace; }
+    .journey-step p { margin: 13px 0 0; font-size: clamp(13px, 1vw, 17px); }
+    .quote {
+      padding-left: 20px;
+      border-left: 3px solid var(--cyan);
+      color: #dce7f2;
+      font-size: clamp(21px, 2vw, 32px);
+      line-height: 1.3;
+      letter-spacing: -.02em;
+    }
+    .app-shell { display: grid; grid-template-columns: 150px 1fr; height: 100%; min-height: 0; border: 1px solid rgba(153,185,216,.2); border-radius: 22px; overflow: hidden; box-shadow: var(--shadow); background: #0b111b; }
+    .app-nav { padding: 18px 14px; background: #080d14; border-right: 1px solid var(--line); }
+    .app-logo { display: flex; align-items: center; gap: 8px; margin-bottom: 22px; font-size: 12px; font-weight: 750; }
+    .app-nav-item { margin: 5px 0; padding: 10px 11px; border-radius: 9px; color: #78899e; font-size: 11px; }
+    .app-nav-item.active { color: var(--ink); background: rgba(89,228,255,.09); }
+    .app-main { display: grid; grid-template-rows: auto auto 1fr; gap: 13px; min-width: 0; padding: 18px; }
+    .app-toolbar { display: flex; justify-content: space-between; gap: 10px; }
+    .app-title { font-size: 15px; font-weight: 730; }
+    .app-status { color: var(--green); font-size: 10px; }
+    .app-result { display: grid; grid-template-columns: 1fr auto; gap: 16px; padding: 14px; border: 1px solid rgba(255,214,107,.24); border-radius: 14px; background: rgba(255,214,107,.055); }
+    .app-result strong { display: block; margin-bottom: 5px; font-size: 17px; }
+    .app-result .time { color: var(--cyan); font: 700 17px/1.2 "Cascadia Code", monospace; }
+    .app-grid { display: grid; grid-template-columns: 1.25fr .75fr; gap: 12px; min-height: 0; }
+    .mini-panel { padding: 12px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.018); }
+    .mini-title { margin-bottom: 10px; color: #b7c6d6; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+    .track { position: relative; height: 16px; margin: 8px 0; overflow: hidden; border-radius: 5px; background: #172332; }
+    .track span { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+    .track .u { background: var(--yellow); opacity: .78; }
+    .track .c { background: var(--red); opacity: .82; }
+    .track .a { background: var(--green); opacity: .68; }
+    .track .n { background: repeating-linear-gradient(45deg, #566477, #566477 3px, #273240 3px, #273240 6px); }
+    .window-strip { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; margin-top: 13px; }
+    .window-strip i { height: 32px; border-radius: 4px; background: rgba(255,155,85,.34); }
+    .window-strip i:nth-child(n+5):nth-child(-n+8) { background: rgba(126,224,170,.55); }
+    .window-strip i.sel { outline: 2px solid var(--cyan); outline-offset: 2px; background: rgba(89,228,255,.42); }
+    .source-row { display: flex; justify-content: space-between; gap: 10px; margin: 8px 0; font-size: 10px; color: #aebdcd; }
+
+    /* Mechanisms */
+    .mechanism-card { display: grid; grid-template-rows: auto auto 1fr auto; gap: 14px; }
+    .mechanism-head { display: flex; justify-content: space-between; align-items: center; gap: 18px; }
+    .equation { padding: 12px 14px; border-radius: 12px; color: #dce8f4; background: rgba(0,0,0,.24); font: 600 clamp(12px, 1vw, 16px)/1.4 "Cascadia Code", monospace; }
+    .method-chain { display: flex; align-items: center; gap: 8px; color: #c4d1de; font-size: clamp(11px, .85vw, 14px); }
+    .method-chain span { flex: 1; padding: 10px; text-align: center; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.02); }
+    .method-chain b { color: var(--cyan); font-weight: 700; }
+    .boundary { display: flex; align-items: flex-start; gap: 11px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: clamp(11px, .9vw, 15px); }
+
+    /* Architecture */
+    .arch { display: grid; grid-template-columns: .82fr 1fr 1fr .82fr; gap: 26px; align-items: center; height: calc(100% - 54px); }
+    .arch-col { display: grid; gap: 10px; }
+    .arch-box { position: relative; padding: 16px; border: 1px solid var(--line); border-radius: 15px; background: rgba(14,22,33,.82); }
+    .arch-box h3 { margin: 0 0 6px; font-size: 18px; }
+    .arch-box p { margin: 0; color: var(--muted); font-size: 12px; }
+    .arch-arrow { position: absolute; right: -20px; top: 50%; width: 14px; border-top: 1px solid var(--cyan); }
+    .arch-arrow::after { content: ""; position: absolute; right: -1px; top: -4px; width: 7px; height: 7px; border-top: 1px solid var(--cyan); border-right: 1px solid var(--cyan); transform: rotate(45deg); }
+    .db-cylinder { display: grid; place-items: center; height: 110px; border: 1px solid rgba(169,156,255,.36); border-radius: 50% / 16%; background: linear-gradient(180deg, rgba(169,156,255,.14), rgba(20,21,42,.6)); }
+    .db-cylinder strong { color: #d9d2ff; }
+    .proof-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 15px; }
+    .proof-strip span { padding: 9px 7px; text-align: center; border-radius: 8px; color: #b8c7d7; background: rgba(255,255,255,.035); font-size: 10px; }
+
+    /* Timeline */
+    .time-honesty { display: grid; grid-template-columns: 200px 1fr; gap: 20px; align-content: center; }
+    .time-label { padding: 17px 0; }
+    .time-label strong { display: block; margin-bottom: 3px; }
+    .time-lane { position: relative; height: 78px; border-bottom: 1px solid var(--line); }
+    .time-lane::before { content: ""; position: absolute; left: 44%; top: 8px; bottom: -1px; border-left: 2px solid var(--cyan); }
+    .time-lane::after { content: "отсечка"; position: absolute; left: calc(44% + 7px); top: 8px; color: var(--cyan); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
+    .time-block { position: absolute; top: 36px; height: 25px; display: grid; place-items: center; border-radius: 6px; font-size: 10px; font-weight: 700; }
+    .time-block.seen { left: 3%; width: 39%; color: #c8f8dc; background: rgba(126,224,170,.22); border: 1px solid rgba(126,224,170,.33); }
+    .time-block.calc { left: 44%; width: 28%; color: #c9f7ff; background: rgba(89,228,255,.18); border: 1px solid rgba(89,228,255,.31); }
+    .time-block.future { left: 74%; width: 23%; color: #ffd9dd; background: repeating-linear-gradient(45deg, rgba(255,100,116,.16), rgba(255,100,116,.16) 5px, rgba(255,100,116,.05) 5px, rgba(255,100,116,.05) 10px); border: 1px dashed rgba(255,100,116,.34); }
+    .mode-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 22px; }
+    .mode-card { padding: 17px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,255,255,.025); }
+    .mode-card strong { display: block; margin-bottom: 6px; }
+
+    /* Case */
+    .case-hero { display: grid; grid-template-columns: .92fr 1.08fr; gap: clamp(20px, 3vw, 48px); align-items: stretch; }
+    .case-big { display: flex; flex-direction: column; justify-content: space-between; }
+    .compare-window { display: grid; grid-template-columns: 105px 1fr auto; gap: 14px; align-items: center; padding: 15px 0; border-bottom: 1px solid var(--line); }
+    .compare-window .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+    .compare-window .range { font: 700 clamp(18px, 1.45vw, 24px)/1.2 "Cascadia Code", monospace; }
+    .compare-window .value { text-align: right; }
+    .compare-window.recommended .range, .compare-window.recommended .value { color: var(--cyan); }
+    .ratio { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; margin-top: 18px; }
+    .ratio .metric { color: var(--cyan); }
+    .dayline { position: relative; height: 180px; margin-top: 14px; padding-top: 34px; }
+    .axis-line { position: absolute; left: 0; right: 0; top: 92px; border-top: 1px solid #405066; }
+    .axis-labels { position: absolute; left: 0; right: 0; top: 105px; display: flex; justify-content: space-between; color: var(--dim); font-size: 10px; }
+    .day-window { position: absolute; height: 29px; border-radius: 7px; display: grid; place-items: center; font-size: 10px; font-weight: 700; }
+    .day-window.plan { left: 12.5%; width: 27.1%; top: 47px; color: #ffe7cf; background: rgba(255,155,85,.27); border: 1px solid rgba(255,155,85,.45); }
+    .day-window.rec { left: 24%; width: 27.1%; top: 80px; color: #caf8ff; background: rgba(89,228,255,.22); border: 1px solid rgba(89,228,255,.52); }
+    .event-line { position: absolute; left: 8%; width: 56%; top: 26px; height: 6px; border-radius: 4px; background: linear-gradient(90deg, rgba(255,214,107,.2), var(--yellow), var(--red)); }
+    .event-line::after { content: "протонное событие развивается"; position: absolute; top: -18px; left: 0; color: var(--muted); font-size: 10px; }
+    .cutoff-line { position: absolute; left: 0; top: 18px; bottom: 43px; border-left: 2px solid var(--cyan); }
+    .cutoff-line::after { content: "03:00"; position: absolute; top: -18px; left: 6px; color: var(--cyan); font: 700 10px/1 "Cascadia Code", monospace; }
+
+    /* Evidence / reliability */
+    .trace { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-items: stretch; }
+    .trace-node { position: relative; padding: 15px 11px; text-align: center; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.025); }
+    .trace-node:not(:last-child)::after { content: "→"; position: absolute; right: -12px; top: 50%; transform: translateY(-50%); z-index: 3; color: var(--cyan); }
+    .trace-node strong { display: block; margin-bottom: 6px; font-size: 13px; }
+    .trace-node span { color: var(--muted); font-size: 10px; }
+    .failure { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
+    .failure-symbol { display: grid; place-items: center; width: 72px; height: 72px; border: 1px solid rgba(255,100,116,.42); border-radius: 18px; color: var(--red); background: rgba(255,100,116,.1); font-size: 31px; font-weight: 750; }
+    .monitor-strip { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; }
+    .monitor-strip .arrow { color: var(--cyan); font-size: 24px; }
+
+    /* Charts */
+    .chart { display: grid; gap: 13px; }
+    .bar-row { display: grid; grid-template-columns: 102px 1fr 52px; gap: 10px; align-items: center; }
+    .bar-row .name { color: #c5d2df; font-size: 12px; }
+    .bar-bg { position: relative; height: 22px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,.05); }
+    .bar-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--cyan-2), var(--cyan)); }
+    .bar-fill.base { background: #55667b; }
+    .bar-fill.warn { background: linear-gradient(90deg, #cf7f48, var(--orange)); }
+    .bar-row .val { text-align: right; font: 700 13px/1 "Cascadia Code", monospace; }
+    .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .metric-tile { padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.025); }
+    .metric-tile strong { display: block; margin-bottom: 5px; font-size: clamp(24px, 2.5vw, 40px); letter-spacing: -.04em; }
+    .metric-tile span { color: var(--muted); font-size: 11px; }
+    .lead-chart { position: relative; height: 230px; padding: 18px 16px 32px 46px; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .lead-chart::before, .lead-chart::after { content: ""; position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,.08); }
+    .lead-chart::before { top: 25%; } .lead-chart::after { top: 62%; }
+    .lead-bars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; align-items: end; height: 100%; }
+    .lead-bar { position: relative; height: var(--h); min-height: 10px; border-radius: 8px 8px 0 0; background: linear-gradient(180deg, var(--cyan), #197c91); }
+    .lead-bar:nth-child(3), .lead-bar:nth-child(4) { background: linear-gradient(180deg, var(--yellow), #9e7330); }
+    .lead-bar strong { position: absolute; top: -26px; left: 50%; transform: translateX(-50%); font: 700 13px/1 "Cascadia Code", monospace; }
+    .lead-bar span { position: absolute; left: 50%; bottom: -28px; transform: translateX(-50%); width: 80px; text-align: center; color: var(--muted); font-size: 10px; }
+
+    /* Extras/finale */
+    .extras { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; height: 100%; }
+    .extra { display: grid; grid-template-rows: auto auto 1fr auto; gap: 12px; }
+    .extra .big-index { color: rgba(89,228,255,.16); font-size: 58px; line-height: .8; font-weight: 800; letter-spacing: -.07em; }
+    .extra p { color: var(--muted); font-size: clamp(12px, .95vw, 15px); }
+    .finale { display: grid; grid-template-columns: 1.17fr .83fr; gap: 5vw; align-items: center; }
+    .final-line { max-width: 980px; color: #dbe6f1; font-size: clamp(24px, 2.7vw, 44px); line-height: 1.24; letter-spacing: -.03em; }
+    .limit-list { display: grid; gap: 10px; }
+    .limit { display: grid; grid-template-columns: 29px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .limit b { color: var(--cyan); }
+    .limit span { color: #bbc9d7; font-size: clamp(12px, .95vw, 15px); line-height: 1.38; }
+    .takeaway { display: flex; align-items: center; gap: 14px; margin-top: 26px; color: var(--cyan); font-size: clamp(15px, 1.1vw, 19px); font-weight: 700; }
+    .takeaway::before { content: ""; width: 42px; height: 2px; background: var(--cyan); }
+
+    /* Navigation */
+    .controls { position: fixed; right: 26px; bottom: 22px; z-index: 20; display: flex; align-items: center; gap: 8px; }
+    .nav-btn {
+      display: grid; place-items: center; width: 40px; height: 40px;
+      border: 1px solid var(--line); border-radius: 12px;
+      color: #dce7f2; background: rgba(10,16,24,.74); backdrop-filter: blur(12px);
+      cursor: pointer; transition: background .2s, border-color .2s, transform .2s;
+    }
+    .nav-btn:hover { border-color: rgba(89,228,255,.5); background: rgba(89,228,255,.09); transform: translateY(-1px); }
+    .nav-btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+    .nav-btn svg { width: 18px; height: 18px; }
+    .counter { min-width: 58px; text-align: center; color: var(--muted); font: 600 12px/1 "Cascadia Code", monospace; }
+    .progress { position: fixed; left: 24px; bottom: 25px; z-index: 20; width: 180px; height: 3px; overflow: hidden; border-radius: 3px; background: rgba(255,255,255,.09); }
+    .progress span { display: block; width: 0; height: 100%; background: var(--cyan); box-shadow: 0 0 14px rgba(89,228,255,.6); transition: width .35s ease; }
+    .help { position: fixed; left: 24px; bottom: 36px; z-index: 20; color: var(--dim); font-size: 10px; letter-spacing: .04em; }
+
+    @media screen and (max-width: 900px) {
+      :root { --pad-x: 30px; --pad-y: 28px; }
+      .cover .content, .grid-2, .case-hero, .finale { grid-template-columns: 1fr; }
+      .cover-orbit { display: none; }
+      .cover-footer { grid-template-columns: 1fr repeat(2, auto); }
+      .cover-stat:last-child { display: none; }
+      .app-shell { grid-template-columns: 105px 1fr; }
+      .arch { grid-template-columns: repeat(2, 1fr); align-content: center; }
+      .extras { grid-template-columns: repeat(2, 1fr); }
+      .slide { overflow-y: auto; }
+    }
+
+    @media screen and (max-height: 690px) {
+      :root { --pad-y: 24px; }
+      .slide { gap: 14px; }
+      h2 { font-size: clamp(34px, 4vw, 54px); }
+      .card { padding: 17px; }
+      .cover-orbit { min-height: 360px; }
+      .planet { width: min(27vw, 340px); }
+      .lead-chart { height: 190px; }
+      .dayline { height: 150px; }
+    }
+
+    @media print {
+      @page { size: 16in 9in; margin: 0; }
+      html, body { height: auto; overflow: visible; background: #05070b; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .deck { height: auto; overflow: visible; }
+      .slide { position: relative; display: grid !important; width: 16in; height: 9in; opacity: 1 !important; visibility: visible !important; transform: none !important; page-break-after: always; pointer-events: auto; }
+      .slide:last-of-type { page-break-after: auto; }
+      .controls, .progress, .help { display: none !important; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slide, .progress span, .nav-btn { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" id="deck" aria-label="Презентация решения по прогнозированию рисков ВКД">
+
+    <section class="slide cover active" data-section="ВКД" aria-labelledby="s1-title">
+      <div class="content">
+        <div>
+          <div class="cover-mark">
+            <span class="seal" aria-hidden="true"></span>
+            <span class="tag">КосмоХакатон · 2026</span>
+          </div>
+          <p class="eyebrow">Исследовательский прототип поддержки решений</p>
+          <h1 id="s1-title">Прогнозирование рисков ВКД</h1>
+          <p class="lead">Проверяемая рекомендация по окну работ на МКС — с траекторией, временной отсечкой и доказательствами.</p>
+          <div class="takeaway">Не обещаем «безопасно». Показываем, что известно, чего не хватает и почему одно окно предпочтительнее другого.</div>
+        </div>
+        <div class="cover-orbit" aria-hidden="true">
+          <div class="planet"></div>
+          <div class="iss-mark">
+            <svg viewBox="0 0 120 50" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="48" y="18" width="24" height="14" rx="2" fill="currentColor" opacity=".22"/>
+              <path d="M0 9h41v32H0zM79 9h41v32H79zM18 9v32M100 9v32M41 25h7M72 25h7M60 8v10M57 8h6"/>
+            </svg>
+          </div>
+          <div class="orbit-label card soft">
+            <div class="kicker">Контекст решения</div>
+            <p class="small" style="margin:7px 0 0">МКС · UTC · окно 1–8 ч · поиск до 24 ч</p>
+          </div>
+        </div>
+      </div>
+      <footer class="cover-footer">
+        <span class="muted small">Презентация по реализованной версии алгоритма 0.2.0</span>
+        <div class="cover-stat"><strong>2</strong><span class="muted small">механизма риска</span></div>
+        <div class="cover-stat"><strong>97</strong><span class="muted small">окон в типовом расчёте</span></div>
+        <div class="cover-stat"><strong>1</strong><span class="muted small">цепочка доказательств</span></div>
+      </footer>
+    </section>
+
+    <section class="slide" data-section="ЗАДАЧА" aria-labelledby="s2-title">
+      <header class="slide-head">
+        <div><p class="eyebrow">01 · пользовательская задача</p><h2 id="s2-title">Аналитику нужен выбор времени, а не набор предупреждений</h2></div>
+        <span class="slide-no">02 / 12</span>
+      </header>
+      <div class="content grid-2 split-60">
+        <div class="stack" style="align-content:center">
+          <div class="quote">Событие важно только тогда, когда оно относится к МКС, пересекает конкретный выход и подтверждается доступными на тот момент данными.</div>
+          <div class="journey">
+            <div class="journey-step"><span class="num">01</span><p>Задать дату, длительность и диапазон старта</p></div>
+            <div class="journey-step"><span class="num">02</span><p>Увидеть внешние факторы на траектории</p></div>
+            <div class="journey-step"><span class="num">03</span><p>Сравнить окна одинаковой длительности</p></div>
+            <div class="journey-step"><span class="num">04</span><p>Передать обоснованную рекомендацию</p></div>
+          </div>
+          <div class="card soft">
+            <span class="pill yellow"><span class="dot"></span>граница ответственности</span>
+            <p class="small" style="margin:10px 0 0">Сервис поддерживает решение. Допуск к реальной ВКД остаётся за уполномоченными специалистами.</p>
+          </div>
+        </div>
+        <div class="stack" style="align-content:center">
+          <div class="card cyan">
+            <div class="kicker">Результат запроса</div>
+            <div class="metric-sm" style="margin:10px 0 13px">Окно + причины + уверенность</div>
+            <ul class="clean">
+              <li>какие интервалы повлияли на выбор;</li>
+              <li>наблюдение это, внешний прогноз или расчёт команды;</li>
+              <li>какие источники устарели или отсутствуют;</li>
+              <li>когда решение нужно пересчитать.</li>
+            </ul>
+          </div>
+          <div class="grid-2">
+            <div class="card soft"><div class="metric-sm accent">UTC</div><div class="small muted">единая временная шкала</div></div>
+            <div class="card soft"><div class="metric-sm warm">≠ 0</div><div class="small muted">нет данных — не значит нет риска</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-section="ИНТЕРФЕЙС" aria-labelledby="s3-title">
+      <header class="slide-head">
+        <div><p class="eyebrow">02 · рабочее место аналитика</p><h2 id="s3-title">Один экран ведёт от запроса к доказательству</h2></div>
+        <span class="slide-no">03 / 12</span>
+      </header>
+      <div class="content grid-2 split-45">
+        <div class="stack" style="align-content:center">
+          <div class="card soft">
+            <span class="tag">Сначала — ответ</span>
+            <h3 style="margin-top:16px">Предпочтительное окно или честное «оснований недостаточно»</h3>
+            <p class="muted">Полоса вариантов позволяет быстро сдвинуть старт; изменение длительности запускает новый расчёт, а не маскируется как «улучшение».</p>
+          </div>
+          <div class="card soft">
+            <span class="tag">Затем — подробности</span>
+            <h3 style="margin-top:16px">Шкала воздействий, орбита, источники, исходные записи</h3>
+            <p class="muted">Клик по интервалу открывает правило, значения, единицы, время публикации и ссылку на сырой файл.</p>
+          </div>
+          <div class="grid-3">
+            <div><div class="metric-sm accent">3</div><div class="micro muted">режима</div></div>
+            <div><div class="metric-sm accent">15</div><div class="micro muted">мин шаг окна</div></div>
+            <div><div class="metric-sm accent">ZIP</div><div class="micro muted">HTML + JSON + CSV</div></div>
+          </div>
+        </div>
+        <div class="app-shell" role="img" aria-label="Схематичный вид веб-консоли аналитика">
+          <aside class="app-nav">
+            <div class="app-logo"><span class="dot accent"></span>EVA WINDOW</div>
+            <div class="app-nav-item active">Расчёт</div>
+            <div class="app-nav-item">Источники</div>
+            <div class="app-nav-item">Оповещения</div>
+            <div class="app-nav-item">Сохранённые</div>
+          </aside>
+          <div class="app-main">
+            <div class="app-toolbar"><span class="app-title">Прогноз из прошлого · 08.06.2024</span><span class="app-status">● расчёт завершён</span></div>
+            <div class="app-result">
+              <div><strong>Предпочтительное окно</strong><span class="time">08:45–15:15 UTC</span></div>
+              <span class="pill yellow">уверенность низкая</span>
+            </div>
+            <div class="app-grid">
+              <div class="mini-panel">
+                <div class="mini-title">Временная картина</div>
+                <div class="micro muted">Радиация</div>
+                <div class="track"><span class="u" style="left:0;width:100%"></span><span class="c" style="left:7%;width:2%"></span></div>
+                <div class="micro muted">MMOD</div>
+                <div class="track"><span class="a" style="left:0;width:22%"></span><span class="u" style="left:22%;width:24%"></span><span class="a" style="left:46%;width:20%"></span><span class="u" style="left:66%;width:27%"></span></div>
+                <div class="mini-title" style="margin-top:15px">Варианты начала</div>
+                <div class="window-strip"><i></i><i></i><i></i><i></i><i></i><i class="sel"></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              </div>
+              <div class="mini-panel">
+                <div class="mini-title">Источники</div>
+                <div class="source-row"><span>GOES</span><span class="good">● свежие</span></div>
+                <div class="source-row"><span>SWPC alerts</span><span class="good">● свежие</span></div>
+                <div class="source-row"><span>Kp forecast</span><span class="danger">● нет данных</span></div>
+                <div class="source-row"><span>ISS TLE</span><span class="good">● 2.8 ч</span></div>
+                <div class="source-row"><span>Каталог</span><span class="good">● 3.9 ч</span></div>
+                <div class="source-row"><span>NASA MEO</span><span class="warm">● годовой</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-section="МЕТОД" aria-labelledby="s4-title">
+      <header class="slide-head">
+        <div><p class="eyebrow">03 · два разных механизма</p><h2 id="s4-title">Разная физика. Одна шкала решений по окну</h2></div>
+        <span class="slide-no">04 / 12</span>
+      </header>
+      <div class="content grid-2">
+        <article class="card cyan mechanism-card">
+          <div class="mechanism-head">
+            <div><span class="tag">Механизм 01</span><h3 style="margin-top:14px">Радиационная обстановка</h3></div>
+            <div class="icon-box" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"/></svg></div>
+          </div>
+          <p class="muted">Поток протонов GOES переносится с геостационара на условия траектории МКС через энергетический спектр и геомагнитное обрезание.</p>
+          <div class="method-chain"><span>GOES<br><b>≥10…500 МэВ</b></span><b>→</b><span>IGRF + Kp<br><b>Rc(λ)</b></span><b>→</b><span>SGP4<br><b>точка МКС</b></span><b>→</b><span>J<sub>ISS</sub><br><b>по времени</b></span></div>
+          <div>
+            <div class="equation">наблюдение → собственный прогноз ≤ 6 ч → внешний прогноз SWPC</div>
+            <div class="boundary"><span class="pill yellow">граница</span><span>J<sub>ISS</sub> — оценка потока, не доза космонавта. ЮАА учитывается отдельно.</span></div>
+          </div>
+        </article>
+        <article class="card orange mechanism-card">
+          <div class="mechanism-head">
+            <div><span class="tag" style="color:var(--orange);border-color:rgba(255,155,85,.25);background:rgba(255,155,85,.07)">Механизм 02</span><h3 style="margin-top:14px">Мусор и метеороиды · MMOD</h3></div>
+            <div class="icon-box" style="color:var(--orange);border-color:rgba(255,155,85,.25);background:rgba(255,155,85,.075)" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 16c5-8 10-10 18-12-2 8-4 13-12 18l-2-5-4-1z"/><path d="M5 7L2 4M9 4L8 1M3 11l-3-1"/></svg></div>
+          </div>
+          <p class="muted">Отслеживаемые объекты и статистическая среда разделены: каталог даёт геометрию сближений, прогноз NASA — изменение мелких частиц.</p>
+          <div class="method-chain"><span>Space-Track<br><b>TLE/OMM</b></span><b>→</b><span>SGP4<br><b>RIC</b></span><b>→</b><span>зона МКС<br><b>4×50×50 км</b></span><b>+</b><span>NASA MEO<br><b>экран Земли</b></span></div>
+          <div>
+            <div class="equation">TCA ± 10 мин · относительная скорость · возраст элементов</div>
+            <div class="boundary"><span class="pill yellow">граница</span><span>TLE не даёт вероятность попадания; мелкие фрагменты не каталогизированы.</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide" data-section="ДАННЫЕ" aria-labelledby="s5-title">
+      <header class="slide-head">
+        <div><p class="eyebrow">04 · архитектура и прослеживаемость</p><h2 id="s5-title">Каждый вывод можно развернуть до исходной записи</h2></div>
+        <span class="slide-no">05 / 12</span>
+      </header>
+      <div class="content">
+        <div class="arch">
+          <div class="arch-col">
+            <div class="kicker">Открытые источники</div>
+            <div class="arch-box"><h3>NOAA / GFZ</h3><p>GOES, алерты, прогнозы, Kp</p></div>
+            <div class="arch-box"><h3>Space-Track</h3><p>МКС и каталог объектов</p></div>
+            <div class="arch-box"><h3>NASA MEO</h3><p>годовой прогноз потоков</p><span class="arch-arrow"></span></div>
+          </div>
+          <div class="arch-col">
+            <div class="kicker">Сервис сбора · 8001</div>
+            <div class="arch-box cyan"><h3>ingest</h3><p>расписание, догрузка пропусков, дедупликация, сырые файлы, статусы</p><span class="arch-arrow"></span></div>
+            <div class="db-cylinder"><div style="text-align:center"><strong>PostgreSQL / SQLite</strong><div class="micro muted">records · raw · runs · alerts</div></div></div>
+          </div>
+          <div class="arch-col">
+            <div class="kicker">Расчёт · 8002</div>
+            <div class="arch-box"><h3>assessment</h3><p>SGP4, радиация, MMOD, окна, объяснения, replay, verify</p><span class="arch-arrow"></span></div>
+            <div class="proof-strip"><span>request</span><span>cutoff</span><span>raw_id</span><span>config hash</span><span>algo 0.2.0</span></div>
+          </div>
+          <div class="arch-col">
+            <div class="kicker">Представление · 8000</div>
+            <div class="arch-box"><h3>report</h3><p>консоль, отчёт, ZIP, SSE, уведомления</p></div>
+            <div class="card soft" style="padding:15px"><div class="metric-sm accent">10</div><div class="micro muted">контролируемых потоков данных в типовом расчёте</div></div>
+          </div>
+        </div>
+        <div class="card soft" style="margin-top:18px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:20px">
+          <span class="small"><b>Надёжность:</b> кеш не перезаписывается · источник можно заморозить · сервисы перезапускаются · длительная загрузка имеет статус.</span>
+          <span class="pill green"><span class="dot"></span>параметры запросов не смешиваются</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-section="REPLAY" aria-labelledby="s6-title">
+      <header class="slide-head">
+        <div><p class="eyebrow">05 · историческая честность</p><h2 id="s6-title">Будущее не просачивается в прогноз из прошлого</h2></div>
+        <span class="slide-no">06 / 12</span>
+      </header>
+      <div class="content grid-2 split-60">
+        <div class="stack" style="align-content:center">
+          <div class="time-honesty">
+            <div class="time-label"><strong>Данные</strong><span class="small muted">по issued / creation</span></div>
+            <div class="time-lane"><span class="time-block seen">доступно к T</span><span class="time-block future">поздние данные</span></div>
+            <div class="time-label"><strong>Расчёт</strong><span class="small muted">только до cutoff</span></div>
+            <div class="time-lane"><span class="time-block seen">наблюдалось</span><span class="time-block calc">прогноз команды</span><span class="time-block future">не используется</span></div>
+            <div class="time-label"><strong>Проверка</strong><span class="small muted">после расчёта</span></div>
+            <div class="time-lane"><span class="time-block seen">зафиксировано</span><span class="time-block calc">ожидалось</span><span class="time-block future">факт / verify</span></div>
+          </div>
+          <div class="card soft small"><b class="accent">Манифест запуска</b> фиксирует отсечку, версии сырых файлов, исключённые после T записи, параметры и хэши конфигурации.</div>
+        </div>
+        <div class="stack" style="align-content:center">
+          <div class="mode-cards" style="grid-template-columns:1fr">
+            <div class="mode-card"><span class="pill green">Сейчас</span><strong style="margin-top:10px">Автообновление</strong><span class="small muted">текущие данные, ручное обновление, мониторинг выбранного окна</span></div>
+            <div class="mode-card" style="border-color:rgba(89,228,255,.33)"><span class="pill" style="color:var(--cyan)">Replay</span><strong style="margin-top:10px">Прогноз из прошлого</strong><span class="small muted">произвольная дата, строгая отсечка, последующая сверка с фактом</span></div>
+            <div class="mode-card"><span class="pill yellow">Разбор</span><strong style="margin-top:10px">Полный архив</strong><span class="small muted">реконструкция обстановки без притворства, что это прошлый прогноз</span></div>
+          </div>
+          <p class="small muted">Историческая орбита берётся из элементов соответствующего периода. Современная орбита не подменяет прошлую.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-section="КЕЙС" aria-labelledby="s7-title">
+      <header class="slide-head">
+        <div><p class="eyebrow">06 · replay 08 июня 2024</p><h2 id="s7-title">Система увидела развивающееся событие — и не стала называть окно безопасным</h2></div>
+        <span class="slide-no">07 / 12</span>
+      </header>
+      <div class="content case-hero">
+        <div class="card cyan case-big">
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:15px"><span class="tag">Отсечка 03:00 UTC</span><span class="pill yellow">уверенность низкая</span></div>
+            <div class="compare-window">
+              <span class="label">План</span><span class="range">06:00–12:30</span><span class="value"><b>14,29</b><br><span class="micro muted">pfu·мин</span></span>
+            </div>
+            <div class="compare-window recommended">
+              <span class="label">Выбор</span><span class="range">08:45–15:15</span><span class="value"><b>1,36</b><br><span class="micro muted">pfu·мин</span></span>
+            </div>
+            <div class="ratio"><span class="metric">10,5×</span><span class="small">ниже оценка потока выше порога геомагнитного обрезания — при той же длительности 6 ч 30 мин</span></div>
+          </div>
+          <div class="card soft" style="padding:14px 16px">
+            <span class="small"><b>Почему не «благоприятно»:</b> все 390 минут обоих окон остаются нежелательными из-за идущего протонного события; оптимизируется степень воздействия, а не меняется ярлык.</span>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="card soft">
+            <div class="dayline">
+              <span class="event-line"></span><span class="cutoff-line"></span><span class="axis-line"></span>
+              <span class="day-window plan">план · 06:00</span><span class="day-window rec">выбор · 08:45</span>
+              <div class="axis-labels"><span>03:00</span><span>09:00</span><span>15:00</span><span>21:00</span><span>03:00</span></div>
+            </div>
+            <div class="grid-3">
+              <div><div class="metric-sm">97</div><div class="micro muted">окон рассчитано</div></div>
+              <div><div class="metric-sm">15 мин</div><div class="micro muted">шаг старта</div></div>
+              <div><div class="metric-sm">+60 мин</div><div class="micro muted">запас на задержку</div></div>
+            </div>
+          </div>
+          <div class="card orange">
+            <span class="pill red">что случилось потом</span>
+            <p style="margin:12px 0 6px">Событие выросло до уровня <b>S3</b>. В 05:00 мониторинг уже сформировал сообщение: критично с 07:33 — за <b>153 минуты</b>.</p>
+            <p class="small muted" style="margin:0">Это проверка поведения системы, а не обещание точного прогноза амплитуды.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-section="НАДЁЖНОСТЬ" aria-labelledby="s8-title">
+      <header class="slide-head">
+        <div><p class="eyebrow">07 · доказательства и сбои</p><h2 id="s8-title">Никакого «зелёного» по умолчанию</h2></div>
+        <span class="slide-no">08 / 12</span>
+      </header>
+      <div class="content grid-2">
+        <div class="stack">
+          <div class="card cyan">
+            <span class="tag">Цепочка доказательства</span>
+            <div class="trace" style="margin-top:18px">
+              <div class="trace-node"><strong>Предупреждение</strong><span>интервал и влияние</span></div>
+              <div class="trace-node"><strong>Значение</strong><span>число + единица</span></div>
+              <div class="trace-node"><strong>Правило</strong><span>порог / модель</span></div>
+              <div class="trace-node"><strong>Источник</strong><span>issued + URL</span></div>
+              <div class="trace-node"><strong>raw_id</strong><span>исходный файл</span></div>
+            </div>
+            <p class="small muted" style="margin:18px 0 0">Наблюдение, внешний прогноз и расчёт команды различаются в шкале и объяснении.</p>
+          </div>
+          <div class="card soft">
+            <div class="monitor-strip"><div><b>Изменились данные</b><div class="micro muted">NOTIFY или опрос</div></div><span class="arrow">→</span><div><b>Окно пересчитано</b><div class="micro muted">без повторов того же состояния</div></div></div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="card red failure">
+            <div class="failure-symbol">!</div>
+            <div><span class="pill red">тест отказа</span><h3 style="margin:12px 0 7px">Источник протонов отключён</h3><p class="muted" style="margin:0">Результат: «недостаточно оснований для рекомендации», уверенность — нет.</p></div>
+          </div>
+          <div class="grid-2">
+            <div class="card soft"><div class="metric-sm danger">≠ 0</div><p class="small muted" style="margin:8px 0 0">Пропуск данных не трактуется как нулевой риск.</p></div>
+            <div class="card soft"><div class="metric-sm good">CACHE</div><p class="small muted" style="margin:8px 0 0">Последние записи доступны с отметкой давности.</p></div>
+          </div>
+          <div class="card soft">
+            <ul class="clean">
+              <li>ошибка, квота и устаревание видны пользователю;</li>
+              <li>источник можно временно заморозить или отключить в одном запросе;</li>
+              <li>следующий выпуск данных превращается в явное время пересчёта.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-section="ЭКСПЕРИМЕНТ" aria-labelledby="s9-title">
+      <header class="slide-head">
+        <div><p class="eyebrow">08 · проверка радиационной линии</p><h2 id="s9-title">На отложенных событиях модель чаще замечает неблагоприятные интервалы</h2></div>
+        <span class="slide-no">09 / 12</span>
+      </header>
+      <div class="content grid-2 split-60">
+        <div class="card cyan stack">
+          <div style="display:flex;justify-content:space-between;align-items:center"><span class="tag">Отложенный набор</span><span class="small muted">февраль · март · октябрь 2024</span></div>
+          <div>
+            <div class="kicker" style="margin-bottom:13px">POD · доля найденных неблагоприятных минут</div>
+            <div class="chart">
+              <div class="bar-row"><span class="name">Наша модель</span><div class="bar-bg"><div class="bar-fill" style="width:82.1%"></div></div><span class="val accent">82,1</span></div>
+              <div class="bar-row"><span class="name">Последнее значение</span><div class="bar-bg"><div class="bar-fill base" style="width:75.6%"></div></div><span class="val">75,6</span></div>
+              <div class="bar-row"><span class="name">Только SWPC</span><div class="bar-bg"><div class="bar-fill base" style="width:50.8%"></div></div><span class="val">50,8</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="kicker" style="margin-bottom:13px">FAR · доля ложных предупреждений</div>
+            <div class="chart">
+              <div class="bar-row"><span class="name">Наша модель</span><div class="bar-bg"><div class="bar-fill warn" style="width:22%"></div></div><span class="val warm">2,2%</span></div>
+              <div class="bar-row"><span class="name">Последнее значение</span><div class="bar-bg"><div class="bar-fill base" style="width:18%"></div></div><span class="val">1,8%</span></div>
+              <div class="bar-row"><span class="name">Только SWPC</span><div class="bar-bg"><div class="bar-fill base" style="width:26%"></div></div><span class="val">2,6%</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="card soft"><div class="metric accent">+6,5 п.п.</div><p class="small" style="margin:8px 0 0">к обнаружению против переноса последнего наблюдения при близкой доле ложных тревог.</p></div>
+          <div class="card orange">
+            <span class="pill yellow">честный вывод</span>
+            <h3 style="margin-top:13px">Категория тяжести остаётся слабым местом</h3>
+            <p class="small muted" style="margin:0">На отложенном наборе POD критических минут — 10,2%. Поэтому интерфейс понижает уверенность и не маскирует «наименее неблагоприятное» под безопасность.</p>
+            <div class="rule" style="margin:13px 0 10px"></div>
+            <p class="micro" style="margin:0"><b>Контроль:</b> два спокойных периода не дали ложных протонных тревог. Результаты сохранены по каждой отсечке, а не пересчитаны задним числом.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-section="MMOD" aria-labelledby="s10-title">
+      <header class="slide-head">
+        <div><p class="eyebrow">09 · устойчивость прогноза сближений</p><h2 id="s10-title">Чем дальше горизонт, тем осторожнее формулировка</h2></div>
+        <span class="slide-no">10 / 12</span>
+      </header>
+      <div class="content grid-2">
+        <div class="card cyan">
+          <div style="display:flex;justify-content:space-between;align-items:center"><span class="tag">122 отсечки</span><span class="small muted">01.05–30.06.2024</span></div>
+          <div class="lead-chart" aria-label="Доля подтверждённых сближений по заблаговременности">
+            <div class="lead-bars">
+              <div class="lead-bar" style="--h:96.1%"><strong>96,1%</strong><span>0–6 ч</span></div>
+              <div class="lead-bar" style="--h:89.4%"><strong>89,4%</strong><span>6–12 ч</span></div>
+              <div class="lead-bar" style="--h:85%"><strong>85,0%</strong><span>12–24 ч</span></div>
+              <div class="lead-bar" style="--h:77.2%"><strong>77,2%</strong><span>24–32 ч</span></div>
+            </div>
+          </div>
+          <p class="small muted" style="margin:16px 0 0">Доля прогнозируемых проходов зоны контроля, подтвердившихся на более свежих элементах.</p>
+        </div>
+        <div class="stack">
+          <div class="metric-grid">
+            <div class="metric-tile"><strong class="accent">255</strong><span>проходов спрогнозировано</span></div>
+            <div class="metric-tile"><strong class="good">220</strong><span>подтвердилось</span></div>
+            <div class="metric-tile"><strong class="warm">50</strong><span>появилось позже</span></div>
+          </div>
+          <div class="card soft">
+            <h3>Правило в продукте</h3>
+            <p class="muted">До 12 часов уверенность в сближении — средняя. Дальше — низкая, и рекомендация явно требует пересчёта ближе к выходу.</p>
+            <div class="rule"></div>
+            <p class="small" style="margin:14px 0 0"><b>Почему:</b> элементам обычно меньше суток; основной фактор ошибки — заблаговременность, а не формальный возраст TLE.</p>
+          </div>
+          <div class="card orange">
+            <span class="pill yellow">интерпретация</span>
+            <p class="small" style="margin:10px 0 0">Проход зоны — сигнал проверить уточнённые сообщения о сближении, а не готовое решение об уклонении.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-section="ПОЛЬЗА" aria-labelledby="s11-title">
+      <header class="slide-head">
+        <div><p class="eyebrow">10 · функции сверх расчёта</p><h2 id="s11-title">Рекомендация живёт после нажатия «рассчитать»</h2></div>
+        <span class="slide-no">11 / 12</span>
+      </header>
+      <div class="content extras">
+        <article class="card extra"><div class="big-index">01</div><h3>Мониторинг окна</h3><p>Пересчёт по новым данным и уведомление только при смене состояния: ухудшение, критический интервал, пропажа данных, улучшение.</p><span class="pill green">SSE · браузер · Telegram</span></article>
+        <article class="card extra"><div class="big-index">02</div><h3>Проигрывание прошлого</h3><p>Часы идут шагом 30 минут. На каждом шаге видны только выпуски, которые уже существовали в тот момент.</p><span class="pill">демонстрация решения</span></article>
+        <article class="card extra"><div class="big-index">03</div><h3>Два уровня отчёта</h3><p>Подробный документ для аналитика и короткая сводка для руководителя с тем же результатом и ограничениями.</p><span class="pill">HTML · JSON · CSV</span></article>
+        <article class="card extra"><div class="big-index">04</div><h3>Проверка отказа</h3><p>Источник можно отключить в одном запросе, не ломая остальных пользователей, и увидеть корректную деградацию вывода.</p><span class="pill red">failure injection</span></article>
+      </div>
+    </section>
+
+    <section class="slide" data-section="ИТОГ" aria-labelledby="s12-title">
+      <header class="slide-head">
+        <div><p class="eyebrow">11 · итог</p><h2 id="s12-title">От разрозненных данных — к защищаемому решению</h2></div>
+        <span class="slide-no">12 / 12</span>
+      </header>
+      <div class="content finale">
+        <div>
+          <p class="final-line">Система сравнивает окна по двум физически разным механизмам, соблюдает временную отсечку и показывает <span class="accent">не только ответ, но и основание ответа</span>.</p>
+          <div class="metric-grid" style="margin-top:30px">
+            <div class="metric-tile"><strong>2</strong><span>механизма на траектории</span></div>
+            <div class="metric-tile"><strong>3</strong><span>режима времени</span></div>
+            <div class="metric-tile"><strong>0</strong><span>«безопасно» без оснований</span></div>
+          </div>
+          <div class="takeaway">Главный результат — решение, которое можно перепроверить и вовремя пересчитать.</div>
+        </div>
+        <div class="card cyan">
+          <span class="tag">Что честно ограничено</span>
+          <div class="limit-list" style="margin-top:14px">
+            <div class="limit"><b>01</b><span>Поток протонов — прокси внешней среды, не персональная доза.</span></div>
+            <div class="limit"><b>02</b><span>TLE даёт километровую геометрию, не вероятность попадания.</span></div>
+            <div class="limit"><b>03</b><span>Прогноз тяжести SEP и MMOD дальше 12 часов требует уточнения.</span></div>
+            <div class="limit"><b>04</b><span>При нехватке данных рекомендация снимается, а не «зеленеет».</span></div>
+          </div>
+          <p class="lead accent" style="margin:22px 0 0">Спасибо</p>
+          <p class="small muted" style="margin:4px 0 0">Готовы показать живой путь: запрос → окно → доказательство → replay.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="help" aria-hidden="true">← → / пробел — навигация · F — полный экран</div>
+  <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
+  <nav class="controls" aria-label="Навигация по слайдам">
+    <button class="nav-btn" id="prevBtn" type="button" aria-label="Предыдущий слайд">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <span class="counter" id="counter">01 / 12</span>
+    <button class="nav-btn" id="nextBtn" type="button" aria-label="Следующий слайд">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <button class="nav-btn" id="fullBtn" type="button" aria-label="Полноэкранный режим">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+    </button>
+  </nav>
+
+  <script>
+    (() => {
+      const slides = [...document.querySelectorAll('.slide')];
+      const counter = document.getElementById('counter');
+      const progress = document.getElementById('progressBar');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const fullBtn = document.getElementById('fullBtn');
+      let index = Math.max(0, Math.min(slides.length - 1, Number(location.hash.slice(1)) - 1 || 0));
+      let touchStartX = null;
+
+      function render(next, direction = 1) {
+        next = Math.max(0, Math.min(slides.length - 1, next));
+        if (next === index && slides[index].classList.contains('active')) {
+          updateHud();
+          return;
+        }
+        const previous = slides[index];
+        previous.classList.remove('active');
+        previous.classList.add('leaving');
+        window.setTimeout(() => previous.classList.remove('leaving'), 450);
+        index = next;
+        const current = slides[index];
+        current.style.transform = direction >= 0 ? 'translateX(48px) scale(.985)' : 'translateX(-48px) scale(.985)';
+        current.offsetHeight;
+        current.classList.add('active');
+        current.style.transform = '';
+        history.replaceState(null, '', `#${index + 1}`);
+        updateHud();
+      }
+
+      function updateHud() {
+        counter.textContent = `${String(index + 1).padStart(2, '0')} / ${String(slides.length).padStart(2, '0')}`;
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+        prevBtn.disabled = index === 0;
+        nextBtn.disabled = index === slides.length - 1;
+        slides.forEach((slide, i) => slide.setAttribute('aria-hidden', i === index ? 'false' : 'true'));
+      }
+
+      function go(delta) { render(index + delta, delta); }
+      prevBtn.addEventListener('click', () => go(-1));
+      nextBtn.addEventListener('click', () => go(1));
+      fullBtn.addEventListener('click', async () => {
+        if (!document.fullscreenElement) await document.documentElement.requestFullscreen?.();
+        else await document.exitFullscreen?.();
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (['ArrowRight', 'PageDown', ' '].includes(event.key)) { event.preventDefault(); go(1); }
+        if (['ArrowLeft', 'PageUp'].includes(event.key)) { event.preventDefault(); go(-1); }
+        if (event.key === 'Home') { event.preventDefault(); render(0, -1); }
+        if (event.key === 'End') { event.preventDefault(); render(slides.length - 1, 1); }
+        if (event.key.toLowerCase() === 'f') fullBtn.click();
+      });
+
+      document.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].clientX; }, {passive:true});
+      document.addEventListener('touchend', e => {
+        if (touchStartX === null) return;
+        const dx = e.changedTouches[0].clientX - touchStartX;
+        if (Math.abs(dx) > 55) go(dx < 0 ? 1 : -1);
+        touchStartX = null;
+      }, {passive:true});
+
+      window.addEventListener('hashchange', () => {
+        const target = Number(location.hash.slice(1)) - 1;
+        if (Number.isInteger(target) && target >= 0 && target < slides.length) render(target, target - index);
+      });
+
+      slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+      updateHud();
+    })();
+  </script>
+</body>
+</html>
