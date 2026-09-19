@@ -7,7 +7,8 @@
 </head>
 <body>
 <h1>Отчёт по окнам ВКД</h1>
-<div class="muted">Расчёт {{ run.run_id }} · создан {{ (run.created_at or "")[:16]|replace("T", " ") }} UTC · алгоритм {{ run.algorithm_version }}</div>
+<div class="muted">Расчёт {{ run.run_id }} · создан {{ (run.created_at or "")[:16]|replace("T", " ") }} UTC · алгоритм {{ run.algorithm_version }}
+  {% if res.config %}· настройки {% for k, v in res.config.sha256.items() %}{{ k }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}</div>
 
 <h2>Запрос</h2>
 <div class="kv">
@@ -24,7 +25,7 @@
 <h2>Рекомендация</h2>
 <div class="box">
   <span class="pill {{ rec.status }}">{{ REC_TEXT.get(rec.status, rec.status) }}</span>
-  {% if best %}<b> {{ best.id }}: {{ best.start }} – {{ best.end }}</b> · правило {{ rec.rule }}{% endif %}
+  {% if best %}<b> {{ best.id }}: {{ best.start }} – {{ best.end }}</b> · правило {{ rec.rule }}{% if rec.rule_text %} ({{ rec.rule_text }}){% endif %}{% endif %}
   · уверенность {{ rec.confidence }}
   <ul>{% for line in res.explanation.text %}<li>{{ line }}</li>{% endfor %}</ul>
   {% if res.recheck_after %}<div class="small">Пересчитать: {% for x in res.recheck_after %}{{ x.time }} — {{ x.reason }}{% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
@@ -52,21 +53,23 @@
 
 <h2>Интервалы с неблагоприятными условиями и пропусками</h2>
 <table>
-  <tr><th>Механизм</th><th>С – по, UTC</th><th>Класс</th><th>Причина</th><th>Тип данных</th><th>Уверенность</th><th>Доказательства</th></tr>
+  <tr><th>Механизм</th><th>С – по, UTC</th><th>Класс</th><th>Причина</th><th>Тип данных</th><th>Уверенность и от чего зависит</th><th>Доказательства</th></tr>
   {% for m, ivs in res.timeline.items() %}{% for iv in ivs %}{% if iv.class != "acceptable" %}
   <tr><td>{{ MECH_TEXT.get(m, m) }}</td><td>{{ iv.from[5:16]|replace("T", " ") }} – {{ iv.to[11:16] }}</td>
     <td class="lvl-{{ iv.class }}">{{ iv.class }}</td><td>{{ iv.reason_text }}</td><td>{{ KIND_TEXT.get(iv.kind, iv.kind) }}</td>
-    <td>{{ iv.confidence }}</td><td><code>{{ iv.evidence|join(", ") }}</code></td></tr>
+    <td>{{ iv.confidence }}{% if iv.confidence_reason %} — {{ iv.confidence_reason }}{% endif %}</td><td><code>{{ iv.evidence|join(", ") }}</code></td></tr>
   {% endif %}{% endfor %}{% endfor %}
 </table>
 
 {% if res.events.mmod %}
 <h2>Сближения с отслеживаемыми объектами (≤ 50 км)</h2>
 <table>
-  <tr><th>Момент наибольшего сближения</th><th>Объект</th><th class="num">Дальность, км</th><th class="num">Радиально / вдоль / поперёк, км</th><th>Зона контроля</th><th>Эпоха элементов</th></tr>
+  <tr><th>Момент наибольшего сближения</th><th>Объект</th><th class="num">Дальность, км</th><th class="num">Радиально / вдоль / поперёк, км</th>
+    <th>Пролёт, км/с</th><th class="num">Энергия 1 г, кДж (тротил, г)</th><th>Зона контроля</th><th>Эпоха элементов</th></tr>
   {% for e in res.events.mmod %}
   <tr><td>{{ e.tca }}</td><td>{{ e.object_name }} ({{ e.norad_id }}, {{ e.object_type }})</td><td class="num">{{ e.min_range_km }}</td>
     <td class="num">{{ e.radial_km }} / {{ e.intrack_km }} / {{ e.crosstrack_km }}</td>
+    <td>{{ e.pass_type or "" }} {{ e.rel_speed_km_s }}</td><td class="num">{{ e.energy_per_gram_kj }} ({{ e.tnt_equiv_per_gram_g }})</td>
     <td class="{{ 'lvl-critical' if e.in_control_box else '' }}">{{ "в зоне — критично" if e.in_control_box else "вне зоны" }}</td>
     <td>{{ e.element_epoch }} (опубл. {{ e.element_created }})</td></tr>
   {% endfor %}

@@ -15,8 +15,8 @@ from pathlib import Path
 import numpy as np
 
 from common.db import insert_ignore, records
-from common.timeutil import parse_iso
-from services.ingest.adapters.base import Adapter, IngestResult
+from common.timeutil import parse_iso, utcnow
+from services.ingest.adapters.base import Adapter, IngestResult, days_with_data, gap_start, last_time
 
 ENERGIES = {">=10 MeV": 10, ">=30 MeV": 30, ">=50 MeV": 50, ">=100 MeV": 100, ">=500 MeV": 500}
 STEP = timedelta(minutes=5)
@@ -52,9 +52,31 @@ class GoesProtons(Adapter):
     parser_version = "1"
 
     def live(self, engine) -> IngestResult:
+        """Обычно — ряд за 6 ч; после простоя — продукт SWPC, покрывающий пропуск (до 7 сут), старше — архив NCEI."""
         result = IngestResult(self.name)
-        self.fetch_and_store(engine, self.cfg["live_url"], result)
+        now = utcnow()
+        last = last_time(engine, records.c.valid_to, records.c.source == self.name,
+                         records.c.product == "swpc_integral_protons")
+        self.fetch_and_store(engine, self.live_url_for_gap(None if last is None else (now - last).total_seconds() / 3600),
+                             result)
+        if last is not None and now - last > timedelta(days=7):
+            self._fill(result, "архива NCEI", lambda: self.backfill(engine, gap_start(last, now, 0),
+                                                                     (now - timedelta(days=7)).date()))
         return result
+
+    def live_url_for_gap(self, gap_h: float | None) -> str:
+        """Самый короткий продукт, который покрывает пропуск с запасом в час; данных нет — самый длинный."""
+        options = sorted((int(h), u) for h, u in (self.cfg.get("catchup_urls") or {}).items())
+        if gap_h is not None and gap_h <= 5:
+            return self.cfg["live_url"]
+        for hours, url in options:
+            if gap_h is not None and gap_h <= hours - 1:
+                return url
+        return options[-1][1] if options else self.cfg["live_url"]
+
+    def covered_days(self, conn, start: date, end: date) -> set[date]:
+        return days_with_data(conn, records.c.valid_from, [records.c.source == self.name, records.c.quantity == "p_ge10"],
+                              start, end, min_count=200)
 
     def backfill(self, engine, start: date, end: date) -> IngestResult:
         result = IngestResult(self.name)

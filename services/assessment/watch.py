@@ -22,6 +22,7 @@ from sqlalchemy import select, update
 from common import config
 from common.db import alerts, get_engine, watches
 from common.timeutil import iso, parse_iso, utcnow
+from services.assessment.core.explain import conjunction_text
 from services.assessment.runner import RunError, execute, jsonable
 from services.assessment.schemas import RunRequest
 
@@ -30,7 +31,7 @@ log = logging.getLogger(__name__)
 RANK = {"acceptable": 0, "undesirable": 1, "no_data": 2, "critical": 3}
 LEVEL_TEXT = {"acceptable": "приемлемо", "undesirable": "нежелательно", "no_data": "нет данных",
               "critical": "критично"}
-MECH_TEXT = {"radiation": "Радиация", "mmod": "Сближения"}
+MECH_TEXT = {"radiation": "Радиация", "mmod": "Мусор и метеороиды"}
 TICK_S = float(os.getenv("WATCH_TICK_S", "5"))
 NOW_INTERVAL_S = float(os.getenv("WATCH_NOW_INTERVAL_S", "120"))
 
@@ -94,6 +95,10 @@ def _snapshot(w, as_of: datetime | None) -> dict:
             if iv["class"] == "critical" and iv["to"] > win["start"] and iv["from"] < win["end"]:
                 first_crit = {"from": max(iv["from"], win["start"]), "reason": iv["reason_text"],
                               "kind": iv["kind"], "confidence": iv["confidence"], "evidence": iv["evidence"]}
+                conj = next((res["evidence"][k] for k in iv["evidence"] if k.startswith("conj:") and k in res["evidence"]),
+                            None)
+                if conj:
+                    first_crit["detail"] = conjunction_text(conj)
                 break
         mechs[name] = {"worst": st["worst"], "minutes": st["minutes"], "confidence": st["confidence"],
                        "reasons": st["reasons"], "first_critical": first_crit}
@@ -128,6 +133,8 @@ def _compare(w, prev: dict | None, cur: dict) -> list[dict]:
                 lead = (t_crit - now).total_seconds() / 60 if t_crit else None
                 msg = (f"{title}: КРИТИЧНО в окне с {fc.get('from', '')[11:16]} UTC — {fc.get('reason', '')} "
                        f"({fc.get('kind', '')}, уверенность {fc.get('confidence', '')}).")
+                if fc.get("detail"):
+                    msg += f" Подробно: {fc['detail']}."
                 if cur["in_progress"] and lead is not None:
                     msg += (f" Выход идёт: до критического интервала {lead:.0f} мин, время возвращения в шлюз "
                             f"{ret_min} мин" + (" — ЗАПАС МЕНЬШЕ ВРЕМЕНИ ВОЗВРАЩЕНИЯ." if lead < ret_min else "."))
@@ -141,8 +148,8 @@ def _compare(w, prev: dict | None, cur: dict) -> list[dict]:
                                        "оценка невозможна, окно требует проверки.",
                             "details": {"sources": cur["sources"]}})
             else:
-                if set(m["reasons"]) <= {"saa"}:
-                    continue  # проходы ЮАА — известный заранее геометрический фон, не повод для тревоги
+                if set(m["reasons"]) <= {"saa", "meteor_shower"}:
+                    continue  # ЮАА и метеорные потоки известны заранее (геометрия, годовой прогноз) — не повод для тревоги
                 top = next(iter(m["reasons"]), "")
                 out.append({"severity": "warning", "kind": "worsened", "mechanism": name,
                             "message": f"{title}: условия ухудшились до «{LEVEL_TEXT[m['worst']]}» "

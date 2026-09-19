@@ -2,7 +2,7 @@
 
 Прогноз (replay) не меняется. Тот же запрос пересчитывается в режиме разбора (весь архив),
 и результаты сравниваются: по минутам (попадания, пропуски, ложные тревоги) и по окнам.
-ЮАА исключается из сравнения: это геометрия, она совпадает тривиально.
+ЮАА и метеорные потоки исключаются из сравнения: это геометрия и годовой прогноз, они совпадают тривиально.
 """
 from __future__ import annotations
 
@@ -32,6 +32,8 @@ def _is_event(cls: np.ndarray, reason: np.ndarray, mech: str, level: tuple[str, 
     hit = np.isin(cls, level)
     if mech == "radiation":
         hit &= np.array([r.startswith("sep_") for r in reason])
+    elif mech == "mmod":  # метеорные потоки — заранее известный прогноз, совпадает тривиально
+        hit &= reason == "conjunction"
     return hit
 
 

@@ -4,7 +4,8 @@
 R1  в окне есть критический фактор по любому механизму      -> «не рекомендуется»
 R2  в окне есть интервалы без данных                         -> «требует проверки»
 R3  среди остальных: окно не хуже другого по всем механизмам и лучше хотя бы по одному
-    (минуты нежелательных условий) — лучше (Парето)
+    (минуты нежелательных условий, кроме метеорных потоков) — лучше (Парето); затем меньше минут без
+    количественной оценки потока, меньше поток за окно, меньше минут метеорных потоков (статистика)
 R4  несравнимые окна: приоритет механизмов из конфига, компромисс показывается явно
 R5  при равенстве — больший запас до первого критического фактора после окончания (задержка работ)
 R6  разница в пределах допуска — «равнозначно»
@@ -89,8 +90,12 @@ def evaluate_windows(mechs: dict[str, MechanismTimeline], earliest: datetime, la
     tol = wc["tolerance_min"]
     cands = [w for w in windows if w["status"] == "candidate"]
 
+    def meteor(w):  # метеорные потоки — статистика: учитываются после количественных критериев радиации
+        return sum(v["reasons"].get("meteor_shower", 0.0) for v in w["mechanisms"].values())
+
     def vec(w):
-        return [w["mechanisms"][p]["minutes"]["undesirable"] for p in priority]
+        return [w["mechanisms"][p]["minutes"]["undesirable"] - w["mechanisms"][p]["reasons"].get("meteor_shower", 0.0)
+                for p in priority]
 
     def robust(w):
         f = w["overrun"]["first_critical_after_end_min"]
@@ -112,12 +117,13 @@ def evaluate_windows(mechs: dict[str, MechanismTimeline], earliest: datetime, la
         # R3/R4: минуты нежелательных условий по механизмам в порядке приоритета;
         # затем меньше минут без количественной оценки потока (неизвестное не считается благоприятным);
         # затем оценка потока выше порога обрезания за окно; R5: затем запас на задержку
-        best = min(pareto, key=lambda w: (*vec(w), unassessed(w), expo(w), -robust(w), w["start"]))
+        best = min(pareto, key=lambda w: (*vec(w), unassessed(w), expo(w), meteor(w), -robust(w), w["start"]))
         bv = vec(best)
         expo_tol = rel_tol * max(expo(best), 1.0)
         equivalents = [w for w in cands if w is not best and all(abs(a - b) <= tol for a, b in zip(vec(w), bv))
                        and abs(unassessed(w) - unassessed(best)) <= tol
                        and abs(expo(w) - expo(best)) <= expo_tol
+                       and abs(meteor(w) - meteor(best)) <= tol
                        and (robust(w) >= robust(best) or w["overrun"]["robust"] == best["overrun"]["robust"])]
         for w in cands:
             w["status"], w["rule"] = "worse", "R3"

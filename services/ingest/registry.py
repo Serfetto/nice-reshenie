@@ -10,6 +10,7 @@ from common.db import notify
 from services.ingest.adapters.base import Adapter, IngestResult
 from services.ingest.adapters.goes_protons import GoesProtons
 from services.ingest.adapters.kp import KpForecast, KpObserved
+from services.ingest.adapters.meteors import MeteorForecast
 from services.ingest.adapters.orbital import CatalogSpaceTrack, IssCelestrak, IssSpaceTrack
 from services.ingest.adapters.swpc_alerts import SwpcAlerts
 from services.ingest.adapters.swpc_text import Swpc3Day, SwpcRsga
@@ -19,8 +20,12 @@ log = logging.getLogger(__name__)
 
 ADAPTERS: dict[str, Adapter] = {a.name: a for a in [
     SwpcAlerts(), GoesProtons(), KpObserved(), KpForecast(), Swpc3Day(), SwpcRsga(),
-    IssSpaceTrack(), IssCelestrak(), CatalogSpaceTrack(),
+    IssSpaceTrack(), IssCelestrak(), CatalogSpaceTrack(), MeteorForecast(),
 ]}
+
+# порядок загрузки архива: сначала лёгкие и важные для отсечки источники, каталог — последним (самый тяжёлый)
+BACKFILL_ORDER = ["swpc_alerts", "iss_spacetrack", "kp_observed", "swpc_3day", "swpc_rsga", "meteor_forecast",
+                  "goes_protons", "catalog_spacetrack"]
 
 
 def get(name: str) -> Adapter:

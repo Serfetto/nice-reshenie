@@ -1,0 +1,79 @@
+{
+ "cutoffs": 122,
+ "total": {
+  "predicted": 255,
+  "confirmed": 220,
+  "false": 35,
+  "missed": 50,
+  "confirmed_share": 0.863,
+  "detected_share": 0.815
+ },
+ "by_lead": {
+  "0–6 ч": {
+   "predicted": 51,
+   "confirmed": 49,
+   "false": 2,
+   "missed": 4,
+   "confirmed_share": 0.961,
+   "detected_share": 0.925
+  },
+  "6–12 ч": {
+   "predicted": 47,
+   "confirmed": 42,
+   "false": 5,
+   "missed": 9,
+   "confirmed_share": 0.894,
+   "detected_share": 0.824
+  },
+  "12–24 ч": {
+   "predicted": 100,
+   "confirmed": 85,
+   "false": 15,
+   "missed": 19,
+   "confirmed_share": 0.85,
+   "detected_share": 0.817
+  },
+  "24–32 ч": {
+   "predicted": 57,
+   "confirmed": 44,
+   "false": 13,
+   "missed": 18,
+   "confirmed_share": 0.772,
+   "detected_share": 0.71
+  }
+ },
+ "by_element_age": {
+  "0–1 сут": {
+   "predicted": 253,
+   "confirmed": 218,
+   "false": 35,
+   "missed": 0,
+   "confirmed_share": 0.862,
+   "detected_share": 1.0
+  },
+  "1–2 сут": {
+   "predicted": 2,
+   "confirmed": 2,
+   "false": 0,
+   "missed": 0,
+   "confirmed_share": 1.0,
+   "detected_share": 1.0
+  },
+  "2–3.5 сут": {
+   "predicted": 0,
+   "confirmed": 0,
+   "false": 0,
+   "missed": 0,
+   "confirmed_share": null,
+   "detected_share": null
+  }
+ },
+ "windows": {
+  "windows": 11834,
+  "blocked_pred": 2968,
+  "blocked_actual": 3286,
+  "blocked_both": 2754
+ },
+ "recommended": 122,
+ "recommended_blocked_actual": 6
+}

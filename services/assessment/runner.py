@@ -12,7 +12,7 @@ from common import config
 from common.db import get_engine
 from common.timeutil import floor_to, from_np, iso, time_grid, utcnow
 from services.assessment.core import orbit
-from services.assessment.core.explain import build_explanation
+from services.assessment.core.explain import RULE_TEXT, build_explanation
 from services.assessment.core.mmod import assess_mmod
 from services.assessment.core.radiation import assess_radiation
 from services.assessment.core.timeline import MechanismTimeline
@@ -22,7 +22,7 @@ from services.assessment.slice import DataSlice, Override
 
 HISTORY_FROM, HISTORY_TO = datetime(2024, 5, 1), datetime(2024, 7, 1)
 RELEVANT_SOURCES = ["goes_protons", "swpc_alerts", "kp_observed", "kp_forecast", "swpc_3day", "swpc_rsga",
-                    "iss_spacetrack", "iss_celestrak", "catalog_spacetrack"]
+                    "iss_spacetrack", "iss_celestrak", "catalog_spacetrack", "meteor_forecast"]
 
 
 class RunError(Exception):
@@ -129,9 +129,12 @@ def execute(req: RunRequest, progress: Callable[[str, int], None] = lambda s, p:
                           {**cfg, "window": {**wc, "step_min": step}})
     for m in mechs.values():
         notes.extend(m.notes)
-    explanation = build_explanation(ev, notes)
+    explanation = build_explanation(ev, notes, mechs["mmod"].events if "mmod" in mechs else [])
 
     rec = ev["recommendation"]
+    rec["rule_text"] = RULE_TEXT.get(rec.get("rule"))
+    for w in ev["windows"]:
+        w["rule_text"] = RULE_TEXT.get(w["rule"]) if w.get("rule") else None
     best = next((w for w in ev["windows"] if w["id"] == rec.get("window")), None)
     best_start = datetime.fromisoformat(best["start"][:-1]) if best else None
 
@@ -141,7 +144,7 @@ def execute(req: RunRequest, progress: Callable[[str, int], None] = lambda s, p:
     for name, m in mechs.items():
         timeline[name] = m.intervals()
         used = {k for iv in timeline[name] for k in iv["evidence"]}
-        evidence.update({k: v for k, v in m.evidence_items.items() if k in used or k.startswith("conj:")})
+        evidence.update({k: v for k, v in m.evidence_items.items() if k in used or k.startswith(("conj:", "meteor_"))})
     evidence["orbit"] = {
         "layer": "measurement", "kind": "elements", "source": el_source, "norad_id": el.norad_id,
         "epoch": iso(el.epoch), "created": iso(el.creation_date), "creation_policy": el.creation_policy,
@@ -165,6 +168,7 @@ def execute(req: RunRequest, progress: Callable[[str, int], None] = lambda s, p:
     return jsonable({
         "mode": req.mode, "as_of": as_of, "data_cutoff": sl.data_cutoff,
         "algorithm_version": config.ALGORITHM_VERSION, "radiation_model": req.radiation_model,
+        "config": {"thresholds": cfg, "sha256": config.config_digest()},
         "search": {"earliest_start": earliest, "latest_start": latest, "duration_min": req.duration_min,
                    "step_min": step, "overrun_margin_min": margin,
                    "return_to_airlock_min": req.eva.return_to_airlock_min},
@@ -183,7 +187,10 @@ def execute(req: RunRequest, progress: Callable[[str, int], None] = lambda s, p:
             "Жёсткость обрезания — приближение Штёрмера для центрированного диполя с эмпирическим сдвигом по Kp.",
             "Сближения рассчитаны по TLE (точность единицы км); мелкие фрагменты не каталогизированы; вероятность "
             "попадания в космонавта не оценивается.",
-            "Классы и пороги — черновые, обоснование в docs/method.md.",
+            "Метеорные потоки — статистический прогноз NASA (отношение к фону), а не отдельные частицы; "
+            "фоновый поток мусора и метеороидов одинаков для окон равной длительности и в сравнении не участвует.",
+            "Пороги классов — по шкалам NOAA и открытым материалам NASA или явные допущения команды "
+            "(docs/method.md, §7).",
         ],
         "notes": notes,
     })

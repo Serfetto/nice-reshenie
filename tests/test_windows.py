@@ -11,13 +11,17 @@ from services.assessment.core.windows import evaluate_windows
 G0 = datetime(2024, 6, 1)
 
 
-def mech(name: str, spans: list[tuple[int, int, int]], hours: int = 20) -> MechanismTimeline:
+def mech(name: str, spans: list[tuple], hours: int = 20) -> MechanismTimeline:
     grid = time_grid(G0, G0 + timedelta(hours=hours), 60)
     n = len(grid)
     cls = np.full(n, ACCEPTABLE, dtype=np.int8)
-    for a, b, c in spans:  # минуты от начала
-        cls[(grid >= to_np(G0 + timedelta(minutes=a))) & (grid < to_np(G0 + timedelta(minutes=b)))] = c
-    return MechanismTimeline(name, grid, cls, np.full(n, "x", dtype=object), np.full(n, "observation", dtype=object),
+    reason = np.full(n, "x", dtype=object)
+    for a, b, c, *r in spans:  # минуты от начала, класс, [причина]
+        m = (grid >= to_np(G0 + timedelta(minutes=a))) & (grid < to_np(G0 + timedelta(minutes=b)))
+        cls[m] = c
+        if r:
+            reason[m] = r[0]
+    return MechanismTimeline(name, grid, cls, reason, np.full(n, "observation", dtype=object),
                              np.full(n, "high", dtype=object), [()] * n)
 
 
@@ -73,3 +77,11 @@ def test_mechanisms_not_compensated():
     # по радиации окно чистое, но по сближениям критично -> окно не рекомендуется
     ev = run({"radiation": mech("radiation", []), "mmod": mech("mmod", [(10, 20, CRITICAL)])})
     assert status(ev, 0)["status"] == "not_recommended"
+
+
+def test_meteor_statistics_ranked_after_radiation():
+    # окно с 0: 30 мин нежелательно по радиации; окна с 60 и 120: по 60 мин метеорного потока — они лучше
+    ev = run({"radiation": mech("radiation", [(0, 30, UNDESIRABLE)]),
+              "mmod": mech("mmod", [(120, 180, UNDESIRABLE, "meteor_shower")])}, latest=120)
+    assert status(ev, 0)["status"] == "worse"
+    assert ev["recommendation"]["window"] in (status(ev, 60)["id"], status(ev, 120)["id"])

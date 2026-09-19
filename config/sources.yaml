@@ -3,6 +3,20 @@
 # max_age_s   — старше этого данные считаются устаревшими (-> «нет данных» в расчёте)
 # replay      — exact: время выпуска известно; reconstructed: восстанавливается, в replay используется с пометкой
 # issue_times_utc — плановое время выпуска (для подсказки «когда пересчитать»)
+#
+# При старте ingest догружает архив за период archive (дни без данных) и пропуск за время простоя
+# (services/ingest/bootstrap.py). Дни, которых нет у поставщика, повторно запрашиваются не чаще recheck_days.
+ingest:
+  pause_max_min: 120   # «заморозка» источника из консоли общая для всех — снимается сама через 2 ч
+
+archive:
+  ranges:
+    - ["2024-04-27", "2024-07-02"]   # проверочный период 01.05–30.06.2024 с запасом на контекст до и окно после
+    # отложенные события для эксперимента (не использовались при подборе параметров, docs/experiments.md):
+    - ["2024-02-08", "2024-02-24"]   # протонное событие S2 09–11.02 и спокойный период 19–23.02
+    - ["2024-03-22", "2024-03-27"]   # протонное событие S2 (956 pfu) 23–25.03
+    - ["2024-10-08", "2024-10-13"]   # протонное событие S3 09–11.10 и буря G4 10.10
+  recheck_days: 7
 
 swpc_alerts:
   title: "Алерты, предупреждения и сводки SWPC"
@@ -18,6 +32,11 @@ goes_protons:
   interval_s: 300
   max_age_s: 1800
   live_url: "https://services.swpc.noaa.gov/json/goes/primary/integral-protons-6-hour.json"
+  # после простоя — продукт SWPC, покрывающий пропуск (часы: адрес); пропуск больше недели — ещё архив NCEI
+  catchup_urls:
+    24: "https://services.swpc.noaa.gov/json/goes/primary/integral-protons-1-day.json"
+    72: "https://services.swpc.noaa.gov/json/goes/primary/integral-protons-3-day.json"
+    168: "https://services.swpc.noaa.gov/json/goes/primary/integral-protons-7-day.json"
   archive_url: "https://data.ngdc.noaa.gov/platforms/solar-space-observing-satellites/goes/goes{sat}/l2/data/sgps-l2-avg5m/{yyyy}/{mm}/sci_sgps-l2-avg5m_g{sat}_d{yyyymmdd}_v3-0-2.nc"
   archive_satellite: 18
   replay: reconstructed
@@ -54,6 +73,19 @@ swpc_rsga:
   live_url: "https://services.swpc.noaa.gov/text/sgarf.txt"
   archive_url: "https://www.ngdc.noaa.gov/stp/space-weather/swpc-products/daily_reports/reports_solar_geophysical_activity/{yyyy}/{mm}/{yyyymmdd}RSGA.txt"
   replay: exact
+
+meteor_forecast:
+  title: "Прогноз метеорных потоков для низкой орбиты (NASA MEO)"
+  interval_s: 86400          # выпуск раз в год (осенью на следующий год) — проверка раз в сутки
+  max_age_s: 34560000        # 400 сут
+  replay: exact              # время выпуска — distributionDate записи NTRS
+  forecasts:                 # год: номер записи NTRS
+    2024: "20230015158"
+    2025: "20240012381"
+    2026: "20250009524"
+  meta_url: "https://ntrs.nasa.gov/api/citations/{id}"
+  flux_url: "https://ntrs.nasa.gov/api/citations/{id}/downloads/flux_data.txt"
+  doc_url: "https://ntrs.nasa.gov/api/citations/{id}/downloads/LEO_Forecast_{year}.pdf.txt"
 
 iss_spacetrack:
   title: "Орбитальные элементы МКС (Space-Track)"

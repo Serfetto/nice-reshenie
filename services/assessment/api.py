@@ -22,6 +22,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    jobs.fail_interrupted()
     if os.getenv("WATCHER", "1") == "1":
         watch.start_background()
     yield
@@ -75,11 +76,12 @@ def get_run(run_id: str, include: str | None = Query(None, description="summary:
 
 
 @app.get("/runs")
-def list_runs(limit: int = Query(20, le=200)):
+def list_runs(limit: int = Query(20, le=200), parent_id: str | None = None):
+    q = select(runs.c.id, runs.c.kind, runs.c.parent_id, runs.c.status, runs.c.created_at, runs.c.request, runs.c.error)
+    if parent_id:
+        q = q.where(runs.c.parent_id == parent_id)
     with get_engine().connect() as conn:
-        rows = conn.execute(select(runs.c.id, runs.c.kind, runs.c.parent_id, runs.c.status, runs.c.created_at,
-                                   runs.c.request, runs.c.error)
-                            .order_by(runs.c.created_at.desc()).limit(limit)).fetchall()
+        rows = conn.execute(q.order_by(runs.c.created_at.desc()).limit(limit)).fetchall()
     return [{"run_id": r.id, "kind": r.kind, "parent_id": r.parent_id, "status": r.status,
              "created_at": iso(r.created_at), "request": r.request, "error": r.error} for r in rows]
 

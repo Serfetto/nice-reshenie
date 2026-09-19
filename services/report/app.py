@@ -150,16 +150,17 @@ async def status_line(run_id: str):
     return render.status_line(run["result"])
 
 
-@app.get("/runs/{run_id}/export.zip")
-async def export_zip(request: Request, run_id: str):
-    run = await _load_run(run_id)
+def build_zip(run: dict, verification: dict | None = None) -> bytes:
+    """Выгрузка расчёта: читаемые отчёт и сводка + машиночитаемые JSON/CSV (те же данные, что в консоли)."""
     ctx = _report_context(run)
     res = run["result"]
-    report_html = templates.get_template("report.html").render({"request": request, **ctx})
-    brief_html = templates.get_template("brief.html").render({"request": request, **ctx})
-    manifest = {"run_id": run_id, "algorithm_version": run.get("algorithm_version"), "mode": res["mode"],
+    report_html = templates.get_template("report.html").render({"request": None, **ctx})
+    brief_html = templates.get_template("brief.html").render({"request": None, **ctx})
+    manifest = {"run_id": run["run_id"], "algorithm_version": run.get("algorithm_version"), "config": res.get("config"),
+                "mode": res["mode"],
                 "as_of": res["as_of"], "data_cutoff": res["data_cutoff"], "request": run.get("request"),
                 "sources": res["sources"], "raw_files": res["manifest"],
+                "verification": verification.get("run_id") if verification else None,
                 "note": "raw_id — идентификаторы сырых файлов в хранилище ingest (GET /raw/{raw_id})"}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -170,5 +171,21 @@ async def export_zip(request: Request, run_id: str):
         z.writestr("series.csv", render.series_csv(res))
         z.writestr("windows.csv", render.windows_csv(res))
         z.writestr("intervals.csv", render.intervals_csv(res))
-    return Response(buf.getvalue(), media_type="application/zip",
+        if verification:
+            z.writestr("verification.json", json.dumps(verification, ensure_ascii=False, indent=1))
+    return buf.getvalue()
+
+
+@app.get("/runs/{run_id}/export.zip")
+async def export_zip(run_id: str):
+    run = await _load_run(run_id)
+    verification = None
+    try:  # последняя завершённая сверка с фактом, если была
+        r = await _client.get(f"{ASSESSMENT_URL}/runs", params={"parent_id": run_id, "limit": 5})
+        done = [x for x in r.json() if x.get("kind") == "verify" and x.get("status") == "done"]
+        if done:
+            verification = (await _client.get(f"{ASSESSMENT_URL}/runs/{done[0]['run_id']}")).json()
+    except Exception:
+        pass
+    return Response(build_zip(run, verification), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="vkd_{run_id}.zip"'})

@@ -1,7 +1,7 @@
 """Свежесть данных по источникам (используется панелью источников и расчётом)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 
@@ -36,6 +36,7 @@ def latest_data_time(conn, source: str, as_of: datetime | None = None) -> dateti
 
 def sources_overview(conn) -> list[dict]:
     now = utcnow()
+    pause_min = float((config.sources().get("ingest") or {}).get("pause_max_min", 120))
     status_rows = {r.source: r for r in conn.execute(select(source_status)).fetchall()}
     out = []
     for name, cfg in config.sources().items():
@@ -68,6 +69,7 @@ def sources_overview(conn) -> list[dict]:
             "last_error": st.last_error if st else None,
             "consecutive_failures": st.consecutive_failures if st else 0,
             "paused": bool(st.paused) if st else False,
+            "paused_until": iso(st.paused_at + timedelta(minutes=pause_min)) if st and st.paused and st.paused_at else None,
             "replay": cfg.get("replay"),
         })
     return out

@@ -1,5 +1,5 @@
 # Запуск:   docker compose up -d --build
-# Архив:    docker compose --profile setup run --rm backfill
+# Архив:    загружается сам при старте ingest (только недостающие дни); вручную — docker compose --profile setup run --rm backfill
 # Консоль:  http://<сервер>:8000  (наружу открыт только report; ingest и assessment — на 127.0.0.1)
 # Проверка: curl http://localhost:8000/health
 
@@ -33,13 +33,16 @@ services:
       retries: 20
     restart: unless-stopped
 
-  # Сбор данных: планировщик по источникам + API статусов, сырья и выгрузки CSV
+  # Сбор данных: планировщик по источникам + API статусов, сырья и выгрузки CSV.
+  # При старте: догрузка архива проверочного периода (пустая БД — весь, иначе недостающие дни)
+  # и пропуска живых данных за время простоя.
   ingest:
     <<: *backend
     command: ["uvicorn", "services.ingest.api:app", "--host", "0.0.0.0", "--port", "8001"]
     environment:
       <<: *backend-env
       INGEST_SCHEDULER: "1"
+      INGEST_BOOTSTRAP: "1"
     ports:
       - "127.0.0.1:${INGEST_PORT:-8001}:8001"
     healthcheck:
@@ -84,12 +87,12 @@ services:
       retries: 3
       start_period: 20s
 
-  # Разовая загрузка архива за проверочный период (май–июнь 2024)
+  # Необязательно: то же, что ingest делает при старте, — синхронно и с отчётом в консоль
   backfill:
     <<: *backend
     profiles: ["setup"]
     restart: "no"
-    command: ["python", "-m", "services.ingest.cli", "backfill", "--from", "2024-05-01", "--to", "2024-06-30"]
+    command: ["python", "-m", "services.ingest.cli", "bootstrap"]
 
 volumes:
   pgdata:

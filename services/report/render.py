@@ -14,7 +14,7 @@ REC_TEXT = {"preferred": "Предпочтительное окно", "equivalen
 MODE_TEXT = {"now": "Текущая обстановка", "replay": "Прогноз из прошлого", "review": "Разбор (весь архив)"}
 KIND_TEXT = {"observation": "наблюдение", "forecast_external": "внешний прогноз", "forecast_team": "расчёт команды",
              "probability": "вероятность", "forecast_baseline": "базовая модель", "none": "—"}
-MECH_TEXT = {"radiation": "Радиация", "mmod": "Сближения"}
+MECH_TEXT = {"radiation": "Радиация", "mmod": "Мусор и метеороиды"}
 
 
 def _t(s: str) -> datetime:

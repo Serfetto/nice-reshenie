@@ -80,10 +80,22 @@ def status_error(conn, source: str, error: str) -> None:
 
 def set_paused(conn, source: str, paused: bool) -> None:
     _ensure_status_row(conn, source)
+    now = utcnow()
     conn.execute(update(source_status).where(source_status.c.source == source)
-                 .values(paused=paused, updated_at=utcnow()))
+                 .values(paused=paused, paused_at=now if paused else None, updated_at=now))
+
+
+def pause_limit_min() -> float:
+    return float((config.sources().get("ingest") or {}).get("pause_max_min", 120))
 
 
 def is_paused(conn, source: str) -> bool:
-    row = conn.execute(select(source_status.c.paused).where(source_status.c.source == source)).first()
-    return bool(row and row.paused)
+    """Заморожен ли источник. Заморозка общая для всех пользователей, поэтому снимается сама через pause_max_min."""
+    row = conn.execute(select(source_status.c.paused, source_status.c.paused_at)
+                       .where(source_status.c.source == source)).first()
+    if not (row and row.paused):
+        return False
+    if row.paused_at is not None and (utcnow() - row.paused_at).total_seconds() > pause_limit_min() * 60:
+        set_paused(conn, source, False)
+        return False
+    return True

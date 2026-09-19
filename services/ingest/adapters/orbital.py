@@ -17,9 +17,9 @@ from sgp4.api import Satrec
 
 from common import config
 from common.db import elements, insert_ignore
-from common.timeutil import parse_iso
+from common.timeutil import parse_iso, utcnow
 from services.ingest import http
-from services.ingest.adapters.base import Adapter, IngestResult
+from services.ingest.adapters.base import Adapter, IngestResult, days_with_data, gap_start, last_time
 
 ISS_NORAD = 25544
 FIELDS = "NORAD_CAT_ID,OBJECT_NAME,OBJECT_TYPE,EPOCH,CREATION_DATE,PERIAPSIS,APOAPSIS,TLE_LINE1,TLE_LINE2"
@@ -102,13 +102,24 @@ class IssSpaceTrack(_SpaceTrackAdapter):
     has_backfill = True
 
     def live(self, engine) -> IngestResult:
+        """Текущий набор; если последний опубликованный старше суток (простой) — история за пропуск одним запросом."""
         result = IngestResult(self.name)
+        now = utcnow()
+        last = last_time(engine, elements.c.creation_date, elements.c.norad_id == ISS_NORAD,
+                         elements.c.source == "spacetrack")
         self._fetch(engine, f"/basicspacedata/query/class/gp/NORAD_CAT_ID/{ISS_NORAD}/format/json", result)
+        if last is None or now - last > timedelta(days=1):
+            self._fill(result, "истории Space-Track", lambda: self.backfill(engine, gap_start(last, now, 7), now.date(),
+                                                                            pad_days=0))
         return result
 
-    def backfill(self, engine, start: date, end: date) -> IngestResult:
+    def covered_days(self, conn, start: date, end: date) -> set[date]:
+        return days_with_data(conn, elements.c.epoch, [elements.c.norad_id == ISS_NORAD,
+                                                       elements.c.source == "spacetrack"], start, end)
+
+    def backfill(self, engine, start: date, end: date, pad_days: int = 3) -> IngestResult:
         result = IngestResult(self.name)
-        a, b = start - timedelta(days=3), end + timedelta(days=1)
+        a, b = start - timedelta(days=pad_days), end + timedelta(days=1)
         self._fetch(engine, f"/basicspacedata/query/class/gp_history/NORAD_CAT_ID/{ISS_NORAD}"
                             f"/EPOCH/{a:%Y-%m-%d}--{b:%Y-%m-%d}/orderby/EPOCH asc/format/json", result)
         return result
@@ -124,17 +135,29 @@ class CatalogSpaceTrack(_SpaceTrackAdapter):
         return st["band_min_km"], st["band_max_km"]
 
     def live(self, engine) -> IngestResult:
+        """Текущие элементы; после простоя дольше суток — история за пропуск (не глубже недели: по суткам, тяжело)."""
         lo, hi = self._band()
         result = IngestResult(self.name)
+        now = utcnow()
+        last = last_time(engine, elements.c.creation_date, elements.c.norad_id != ISS_NORAD,
+                         elements.c.source == "spacetrack")
         self._fetch(engine, f"/basicspacedata/query/class/gp/PERIAPSIS/<{hi:.0f}/APOAPSIS/>{lo:.0f}"
                             f"/DECAY_DATE/null-val/predicates/{FIELDS}/format/json", result)
+        if last is not None and now - last > timedelta(days=1):
+            start = max(gap_start(last, now, 0), (now - timedelta(days=7)).date())
+            self._fill(result, "истории Space-Track", lambda: self.backfill(engine, start, now.date(), pad_days=0))
         return result
 
-    def backfill(self, engine, start: date, end: date) -> IngestResult:
-        """По суткам эпохи. Фильтр по дате схода не ставим: объекты, сошедшие после 2024 г., тогда летали."""
+    def covered_days(self, conn, start: date, end: date) -> set[date]:
+        return days_with_data(conn, elements.c.epoch, [elements.c.norad_id != ISS_NORAD,
+                                                       elements.c.source == "spacetrack"], start, end, min_count=100)
+
+    def backfill(self, engine, start: date, end: date, pad_days: int = 3) -> IngestResult:
+        """По суткам эпохи. Фильтр по дате схода не ставим: объекты, сошедшие после 2024 г., тогда летали.
+        pad_days — запас до начала: элементы с эпохой до трёх суток раньше нужны для первого дня."""
         lo, hi = self._band()
         result = IngestResult(self.name)
-        d = start - timedelta(days=3)
+        d = start - timedelta(days=pad_days)
         while d <= end:
             try:
                 self._fetch(engine, f"/basicspacedata/query/class/gp_history/EPOCH/{d:%Y-%m-%d}--"

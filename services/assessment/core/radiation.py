@@ -20,7 +20,8 @@ import numpy as np
 
 from common.timeutil import from_np, iso, to_np
 from services.assessment.core import orbit
-from services.assessment.core.timeline import (ACCEPTABLE, CRITICAL, NO_DATA, UNDESIRABLE, MechanismTimeline)
+from services.assessment.core.timeline import (ACCEPTABLE, CRITICAL, NO_DATA, REASONS, UNDESIRABLE,
+                                               MechanismTimeline)
 from services.assessment.slice import DataSlice
 
 SOURCE = "goes_protons"
@@ -128,6 +129,28 @@ def _msg_evidence(m) -> tuple[str, dict]:
                  "title": m.title, "issued_at": iso(m.issued_at), "valid_from": iso(m.valid_from),
                  "valid_to": iso(m.valid_to), "begin_time": iso(m.begin_time), "end_time": iso(m.end_time),
                  "scale": m.scale, "raw_ref": {"raw_id": m.raw_id, "locator": m.locator}}
+
+
+def _conf_reason(kind: str, conf: str, reason: str, kp_assumed: bool, h: float) -> str:
+    """От чего зависит уверенность в этой точке — простыми словами."""
+    if conf == "none":
+        return REASONS.get(reason, "нет данных")
+    if kind == "observation":
+        text = ("пропуск измерений заполнен нижней оценкой по алерту SWPC о событии" if conf == "medium" and not kp_assumed
+                else "измерение GOES не старше 15 мин")
+    elif kind == "forecast_team":
+        text = ("событие идёт, но дальше 6 ч собственный прогноз не строится" if reason == "sep_ongoing_beyond_horizon"
+                else "собственный прогноз, до 3 ч от последнего измерения" if h <= 3
+                else "собственный прогноз, 3–6 ч от последнего измерения — неопределённость растёт")
+    elif kind == "forecast_external":
+        text = "действующее предупреждение SWPC: поток не ниже порога на срок действия"
+    elif kind == "probability":
+        text = "только суточная вероятность SWPC — время события внутри суток неизвестно"
+    else:
+        text = "простая модель для сравнения — динамика события не учитывается"
+    if kp_assumed:
+        text += "; Kp неизвестен — принят консервативно, уверенность понижена"
+    return text
 
 
 def assess_radiation(sl: DataSlice, track: orbit.Track, cfg: dict, model: str = "team") -> MechanismTimeline:
@@ -413,10 +436,13 @@ def assess_radiation(sl: DataSlice, track: orbit.Track, cfg: dict, model: str = 
             if kp_kind[i] == "assumed" and conf[i] in ("high", "medium"):
                 conf[i] = "low"
 
+    hours = (grid - last_t) / np.timedelta64(1, "h") if last_t is not None else np.full(n, np.inf)
+    conf_reason = np.array([_conf_reason(kind[i], conf[i], reason[i], kp_kind[i] == "assumed", float(hours[i]))
+                            for i in range(n)], dtype=object)
     series = {"p_ge10": J[:, 0], "p_ge100": J[:, energies.index(100.0)], "j_iss": j_iss, "kp": kp,
               "rc_gv": rc, "e_cut_mev": e_cut, "saa": saa.astype(float), "prob_sep": prob,
               "kp_assumed": (kp_kind == "assumed").astype(float)}
     return MechanismTimeline(name="radiation", times=grid, cls=cls, reason=reason, kind=kind, confidence=conf,
-                             evidence=ev, evidence_items=evidence, series=series, notes=notes,
+                             evidence=ev, evidence_items=evidence, series=series, notes=notes, conf_reason=conf_reason,
                              events=[{"code": m.code, "serial": m.serial, "begin": iso(b), "end": iso(e)}
                                      for m, b, e in events10])

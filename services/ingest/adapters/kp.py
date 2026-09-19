@@ -11,8 +11,8 @@ import json
 from datetime import date, datetime, timedelta
 
 from common.db import insert_ignore, records
-from common.timeutil import parse_iso
-from services.ingest.adapters.base import Adapter, IngestResult
+from common.timeutil import parse_iso, utcnow
+from services.ingest.adapters.base import Adapter, IngestResult, days_with_data, gap_start, last_time
 
 THREE_H = timedelta(hours=3)
 
@@ -30,9 +30,17 @@ class KpObserved(Adapter):
     has_backfill = True
 
     def live(self, engine) -> IngestResult:
+        """Живой ряд SWPC покрывает ~7 сут; пропуск больше (простой) догружается из GFZ."""
         result = IngestResult(self.name)
+        now = utcnow()
+        last = last_time(engine, records.c.valid_to, records.c.source == self.name)
         self.fetch_and_store(engine, self.cfg["live_url"], result)
+        if last is not None and now - last > timedelta(days=6):
+            self._fill(result, "GFZ", lambda: self.backfill(engine, gap_start(last, now, 0), now.date()))
         return result
+
+    def covered_days(self, conn, start: date, end: date) -> set[date]:
+        return days_with_data(conn, records.c.valid_from, [records.c.source == self.name], start, end, min_count=8)
 
     def backfill(self, engine, start: date, end: date) -> IngestResult:
         result = IngestResult(self.name)

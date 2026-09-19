@@ -37,6 +37,18 @@ def create(kind: str, request: dict, parent_id: str | None = None) -> str:
     return run_id
 
 
+def fail_interrupted() -> int:
+    """Задания живут в памяти процесса и не переживают перезапуск: незавершённые помечаются прерванными,
+    чтобы интерфейс не ждал их бесконечно."""
+    with get_engine().begin() as conn:
+        res = conn.execute(update(runs).where(runs.c.status.in_(("queued", "running"))).values(
+            status="failed", finished_at=utcnow(),
+            error="Расчёт прерван перезапуском сервиса оценки — запустите его заново."))
+    if res.rowcount:
+        log.warning("Помечено прерванными незавершённых расчётов: %d", res.rowcount)
+    return res.rowcount
+
+
 def _progress_writer(run_id: str):
     last = [0.0]
 

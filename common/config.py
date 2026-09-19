@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
 
-ALGORITHM_VERSION = "0.1.0"
+# 0.2.0 — метеорные потоки в MMOD, исключение пристыкованных кораблей, причины уверенности
+ALGORITHM_VERSION = "0.2.0"
 
 DATA_DIR = Path(os.getenv("DATA_DIR", str(ROOT / "data")))
 RAW_DIR = DATA_DIR / "raw"
@@ -36,6 +37,13 @@ def sources() -> dict:
 @lru_cache
 def thresholds() -> dict:
     return _load_yaml("thresholds.yaml")
+
+
+def config_digest() -> dict:
+    """Хэши файлов настроек: по ним сохранённый расчёт однозначно связывается с порогами и источниками."""
+    import hashlib
+    return {name: hashlib.sha256((ROOT / "config" / name).read_bytes()).hexdigest()[:16]
+            for name in ("thresholds.yaml", "sources.yaml")}
 
 
 def source_cfg(name: str) -> dict:

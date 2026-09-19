@@ -26,6 +26,7 @@ REASONS = {
     "source_disabled": "источник отключён для этого расчёта",
     "no_forecast": "нет прогноза на этот интервал",
     "conjunction": "сближение с объектом: проход через зону контроля МКС",
+    "meteor_shower": "метеорный поток: поток частиц заметно выше фона, радиант не закрыт Землёй",
     "no_catalog": "нет актуального каталога объектов",
     "catalog_stale": "каталог объектов устарел",
     "no_orbit": "нет орбитальных данных МКС",
@@ -45,6 +46,7 @@ class MechanismTimeline:
     series: dict[str, np.ndarray] = field(default_factory=dict)
     events: list[dict] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    conf_reason: np.ndarray | None = None  # object: почему такая уверенность (по точкам)
 
     def intervals(self) -> list[dict]:
         """Схлопывает точки с одинаковым состоянием в интервалы."""
@@ -53,17 +55,19 @@ class MechanismTimeline:
         if n == 0:
             return out
         step = (self.times[1] - self.times[0]) if n > 1 else np.timedelta64(30, "s")
+        cr = self.conf_reason if self.conf_reason is not None else np.full(n, "", dtype=object)
         start = 0
         for i in range(1, n + 1):
             if i < n and (self.cls[i] == self.cls[start] and self.reason[i] == self.reason[start]
                           and self.kind[i] == self.kind[start] and self.confidence[i] == self.confidence[start]
-                          and self.evidence[i] == self.evidence[start]):
+                          and self.evidence[i] == self.evidence[start] and cr[i] == cr[start]):
                 continue
             out.append({
                 "from": iso(from_np(self.times[start])), "to": iso(from_np(self.times[i - 1] + step)),
                 "class": CLASS_NAMES[int(self.cls[start])], "reason": self.reason[start],
                 "reason_text": REASONS.get(self.reason[start], self.reason[start]),
                 "kind": self.kind[start], "confidence": self.confidence[start],
+                "confidence_reason": cr[start] or None,
                 "evidence": list(self.evidence[start]),
             })
             start = i

@@ -8,7 +8,7 @@ const S = { mode: "history", run: null, res: null, sel: null, alerts: [], unread
 // ---------- словари: простые слова ----------
 const CLASS_COLOR = { critical: "#d64545", undesirable: "#e0a030", acceptable: "#3a9d5d", no_data: "#8a929c" };
 const CLASS_TEXT = { critical: "стоп-фактор", undesirable: "нежелательно", acceptable: "без замечаний", no_data: "нет данных" };
-const MECH_TEXT = { radiation: "Частицы от Солнца", mmod: "Космический мусор" };
+const MECH_TEXT = { radiation: "Частицы от Солнца", mmod: "Мусор и метеороиды" };
 const REASON_PLAIN = {
   nominal: "без замечаний",
   saa: "пролёт над Южной Атлантикой (ЮАА) — зона повышенной радиации, обычный фон",
@@ -21,7 +21,8 @@ const REASON_PLAIN = {
   sep_ongoing_beyond_horizon: "выброс частиц продолжается, а дальше 6 часов прогноз не строим",
   no_observation: "нет измерений", obs_stale: "измерения устарели", source_disabled: "источник отключён",
   no_forecast: "нет прогноза на это время",
-  conjunction: "опасное сближение с объектом космического мусора",
+  conjunction: "опасное сближение с отслеживаемым объектом (проход через зону контроля станции)",
+  meteor_shower: "метеорный поток: мелких частиц заметно больше обычного, и направление, откуда они летят, не закрыто Землёй",
   no_catalog: "нет данных о мусоре", catalog_stale: "данные о мусоре устарели",
 };
 const STATUS_TEXT = { preferred: "лучший вариант", equivalent: "почти как лучший", worse: "хуже лучшего",
@@ -39,12 +40,41 @@ const STAGES = { queued: "в очереди", start: "запуск", slice: "с�
   radiation: "частицы от Солнца", mmod: "космический мусор", windows: "сравниваю варианты", done: "готово" };
 const OVERRIDE_SOURCES = { goes_protons: "Частицы от Солнца (GOES)", swpc_alerts: "Сообщения SWPC",
   kp_observed: "Магнитная буря (Kp)", swpc_rsga: "Суточный прогноз RSGA", catalog_spacetrack: "Каталог мусора",
-  iss_spacetrack: "Орбита МКС" };
+  meteor_forecast: "Метеорные потоки (NASA)", iss_spacetrack: "Орбита МКС" };
+// фоновые причины: известны заранее (геометрия орбиты, годовой прогноз) — не делают вариант «плохим» сами по себе
+const BACKGROUND = ["saa", "meteor_shower"];
+// подписи полей в панели доказательств
+const FIELD_TEXT = {
+  source: "источник", product: "продукт", quantity: "величина", unit: "единицы", from: "данные с", to: "данные по",
+  time: "время измерения", values_pfu: "значения, pfu", age_at_cutoff_h: "давность на момент расчёта, ч", fresh: "свежие",
+  reconstructed: "восстановлено из архива", note: "примечание", code: "код сообщения", serial: "номер",
+  title: "заголовок", issued_at: "опубликовано", valid_from: "действует с", valid_to: "действует до",
+  begin_time: "начало события", end_time: "окончание события", scale: "уровень шкалы NOAA", model: "модель",
+  ln_rate_per_h: "принятый темп, ln/ч", fitted_rate_per_h: "подогнанный темп, ln/ч", growth_cap: "ограничение роста, раз",
+  fit_window_h: "окно подгонки, ч", horizon_h: "горизонт, ч", base_time: "последнее измерение",
+  observed_until: "Kp измерен до", observed_reconstructed: "Kp — окончательные значения GFZ (реконструкция)",
+  forecast_issues: "выпуски прогноза Kp", max_kp_in_interval: "максимум Kp на интервале", assumed_points: "точек с Kp по допущению",
+  role: "роль", kp_shift_deg_per_kp: "сдвиг границы, °/Kp", saa_b_nt: "порог |B| для ЮАА, нТл",
+  norad_id: "номер NORAD", object_name: "объект", object_type: "тип", tca: "момент наибольшего сближения",
+  min_range_km: "минимальное расстояние, км", radial_km: "по радиусу, км", intrack_km: "вдоль орбиты, км",
+  crosstrack_km: "поперёк орбиты, км", rel_speed_km_s: "относительная скорость, км/с", pass_type: "тип пролёта",
+  crossing_angle_deg: "угол между скоростями, °", energy_per_gram_kj: "энергия 1 г вещества, кДж",
+  tnt_equiv_per_gram_g: "то же в тротиле, г", in_control_box: "проход через зону контроля", element_epoch: "эпоха элементов",
+  element_created: "элементы опубликованы", element_age_days: "возраст элементов, сут", raw_id: "исходный файл",
+  objects_screened: "проверено объектов", excluded_coorbiting: "исключены (летят вместе с МКС)",
+  latest_published: "последняя публикация каталога", cutoff: "учтено опубликованное до", control_box_km: "зона контроля, км",
+  method: "метод", limitations: "ограничения", epoch: "эпоха элементов", created: "опубликованы", creation_policy: "время публикации",
+  line1: "TLE, строка 1", line2: "TLE, строка 2", max_factor_in_interval: "максимум отношения к фону", threshold: "порог",
+  showers: "потоки", visible_share: "доля времени, когда радиант виден",
+};
+const TIME_FIELDS = ["from", "to", "time", "issued_at", "valid_from", "valid_to", "begin_time", "end_time", "base_time",
+  "observed_until", "tca", "element_epoch", "element_created", "latest_published", "cutoff", "epoch", "created"];
 const PRESETS = {
   "0608": { review: false, asOf: "2024-06-08T03:00", planned: "2024-06-08T06:00" },
   "0510": { review: false, asOf: "2024-05-10T21:00", planned: "" },
   "0511": { review: true, asOf: "2024-05-11T00:00", planned: "" },
-  "0526": { review: false, asOf: "2024-05-26T00:00", planned: "2024-05-26T06:00" },
+  "0526": { review: false, asOf: "2024-05-26T00:00", planned: "2024-05-26T00:45" },
+  "1009": { review: false, asOf: "2024-10-09T06:00", planned: "" },
 };
 
 // ---------- утилиты ----------
@@ -158,15 +188,28 @@ function showProgress(stage, pct) {
   $("progress").querySelector("span").textContent = `${STAGES[stage] || stage}…`;
 }
 
-async function pollRun(id) {
+// ждать, пока расчёт продвигается; если состояние не меняется STALL_MS — сообщить, а не ждать вечно
+const STALL_MS = 180e3;
+async function waitRun(id, onProgress, path = `/api/a/runs/${id}?include=summary`) {
+  let last = "", since = Date.now();
   for (;;) {
-    const r = await api(`/api/a/runs/${id}?include=summary`);
+    const r = await api(path);
     const p = r.progress || {};
-    showProgress(p.stage || r.status, p.pct || 0);
-    if (r.status === "done") break;
+    onProgress?.(p, r);
+    if (r.status === "done") return r;
     if (r.status === "failed") throw new Error(`Не получилось посчитать: ${r.error}`);
-    await new Promise((ok) => setTimeout(ok, 600));
+    const key = `${r.status}/${p.stage}/${p.pct}`;
+    if (key !== last) { last = key; since = Date.now(); }
+    if (Date.now() - since > STALL_MS) {
+      throw new Error(`Расчёт ${id} не продвигается ${STALL_MS / 60e3} мин (состояние: ${r.status}). ` +
+        "Возможно, сервис перезапускался — запустите расчёт заново.");
+    }
+    await new Promise((ok) => setTimeout(ok, 700));
   }
+}
+
+async function pollRun(id) {
+  await waitRun(id, (p, r) => showProgress(p.stage || r.status, p.pct || 0));
   await loadRun(id);
   $("progress").classList.add("hidden");
 }
@@ -213,12 +256,13 @@ function renderPlanBanner() {
 // короткая фраза по механизму для окна
 function mechSentence(m, st, dur) {
   const top = Object.keys(st.reasons || {});
-  const nonSaa = top.filter((c) => c !== "saa");
+  const nonSaa = top.filter((c) => !BACKGROUND.includes(c));
   if (st.worst === "acceptable") {
-    return m === "mmod" ? "опасных сближений нет" : "без замечаний";
+    return m === "mmod" ? "опасных сближений нет, метеорный фон обычный" : "без замечаний";
   }
   if (st.worst === "undesirable" && nonSaa.length === 0) {
-    return `только обычные пролёты ЮАА (${num(st.reasons.saa)} мин) — зона повышенной радиации над Южной Атлантикой`;
+    return st.reasons.saa ? `только обычные пролёты ЮАА (${num(st.reasons.saa)} мин) — зона повышенной радиации над Южной Атлантикой`
+      : `опасных сближений нет; метеорный поток ${num(st.reasons.meteor_shower)} мин — мелких частиц больше обычного (статистика NASA)`;
   }
   const code = st.worst === "critical" ? top.find((c) => ["sep_s3", "sep_open_zone", "conjunction"].includes(c)) || top[0]
     : st.worst === "no_data" ? top.find((c) => ["no_observation", "obs_stale", "source_disabled", "no_forecast",
@@ -233,10 +277,14 @@ function renderAnswer() {
   const box = $("answer");
   box.innerHTML = "";
   const reasons = el("ul", { class: "reasons" });
-  let big, sub, cls;
+  let big, sub, cls, adverse = false;
   if (best) {
     cls = "preferred";
-    big = `Лучше всего начать в ${hm(best.start)} UTC`;
+    // если и лучший вариант с неблагоприятными условиями (не только фоновыми) — не выдавать его за хороший
+    adverse = Object.values(best.mechanisms).some((st) => st.worst === "undesirable" &&
+      Object.keys(st.reasons || {}).some((c) => !BACKGROUND.includes(c)));
+    big = adverse ? `Хороших вариантов нет. Наименее неблагоприятный — начало в ${hm(best.start)} UTC`
+      : `Лучше всего начать в ${hm(best.start)} UTC`;
     sub = `${dmy(best.start)} · выход до ${hm(best.end)} UTC · ${Math.floor(dur / 60)} ч ${dur % 60} мин`;
     for (const [m, st] of Object.entries(best.mechanisms)) {
       reasons.append(el("li", {}, el("i", { style: `background:${CLASS_COLOR[st.worst]}` }),
@@ -275,17 +323,24 @@ function renderAnswer() {
     const topc = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([c]) => reasonText(c));
     if (topc.length) reasons.append(el("li", {}, el("i", { style: "background:#d64545" }), `Причина: ${topc.join("; ")}`));
   }
+  const o = r.orbit || {};
+  reasons.append(el("li", { class: "muted" }, el("i", { style: "background:#4a9eff" }),
+    `Орбита МКС: ${o.source === "iss_spacetrack" ? "Space-Track" : o.source === "iss_celestrak" ? "CelesTrak" : o.source} · ` +
+    `элементы на ${dm(o.epoch)} UTC, опубликованы ${dm(o.created)} UTC · ` +
+    (o.age_at_cutoff_h >= 0 ? `давность ${num(o.age_at_cutoff_h, 1)} ч` : `эпоха позже выбранного момента на ${num(-o.age_at_cutoff_h, 1)} ч (разбор по архиву)`)));
   const conf = rec.confidence;
   const next = (r.recheck_after || [])[0];
   const note = conf === "low"
-    ? el("div", { class: "note" }, "Прогноз на это время ненадёжен: дальше 6 часов известна только суточная вероятность. " +
+    ? el("div", { class: "note" }, "Прогноз на это время ненадёжен: дальше 6 часов по частицам известна только суточная " +
+      "вероятность, а дальше 12 часов с новыми данными об орбитах могут появиться сближения. " +
       (next ? `Пересчитайте после ${dm(next.time)} UTC.` : "Пересчитайте ближе к началу."))
     : null;
   const watchText = r.mode === "now" ? "Следить и предупредить, если станет хуже" : "Показать предупреждения, как в тот день";
   put(box,
     el("div", { class: "verdict" }, el("span", { class: "big" }, big),
       best ? el("span", { class: `pill ${conf === "low" ? "low" : "worse"}` }, `надёжность прогноза: ${CONF_TEXT[conf] || conf}`) : null,
-      best ? el("span", { class: `pill ${cls}` }, rec.status === "equivalent" ? "есть равноценные" : "лучший вариант") : null),
+      best ? el("span", { class: `pill ${adverse ? "worse" : cls}` }, adverse ? "наименее неблагоприятный"
+        : rec.status === "equivalent" ? "есть равноценные" : "лучший вариант") : null),
     el("div", { class: "sub" }, sub),
     reasons, note,
     el("div", { class: "actions" },
@@ -329,11 +384,15 @@ function selectWindow(id) {
 }
 
 function windowIntervals(w) {
+  // соседние интервалы с той же причиной (различаются только уверенностью или доказательствами) — одной строкой
   const out = [];
   for (const [m, list] of Object.entries(S.res.timeline)) {
     list.forEach((iv) => {
       if (iv.class === "acceptable" || iv.to <= w.start || iv.from >= w.end) return;
-      out.push([m, iv]);
+      const prev = out[out.length - 1];
+      if (prev && prev[0] === m && prev[1].class === iv.class && prev[1].reason === iv.reason && prev[1].to === iv.from) {
+        prev[1] = { ...prev[1], to: iv.to, evidence: [...new Set([...prev[1].evidence, ...iv.evidence])] };
+      } else out.push([m, { ...iv }]);
     });
   }
   return out;
@@ -354,14 +413,16 @@ function renderVariant(w) {
   const chips = el("div", { class: "ivs" });
   windowIntervals(w).slice(0, 12).forEach(([m, iv]) => {
     const a = iv.from > w.start ? iv.from : w.start, z = iv.to < w.end ? iv.to : w.end;  // в пределах окна
-    chips.append(el("span", { class: `iv ${iv.class}`, title: "Откуда эти данные",
+    chips.append(el("span", { class: `iv ${iv.class}`, title: `Откуда эти данные. Надёжность: ${CONF_TEXT[iv.confidence] || iv.confidence}` +
+      (iv.confidence_reason ? ` — ${iv.confidence_reason}` : ""),
       onclick: () => openEvidence(iv.evidence, `${MECH_TEXT[m]} · ${dm(iv.from)}–${hm(iv.to)}`, iv) },
     `${hm(a)}–${hm(z)}: ${reasonText(iv.reason, iv.reason_text)}`));
   });
   (r.events.mmod || []).filter((e) => e.tca >= w.start && e.tca <= w.end && isNotableConj(e)).forEach((e) =>
     chips.append(el("span", { class: `iv ${e.in_control_box ? "critical" : ""}`,
       onclick: () => openEvidence([`conj:${e.norad_id}:${e.tca}`, "catalog"], `Сближение: ${e.object_name}`) },
-    `${hm(e.tca)}: ${e.object_name} в ${num(e.min_range_km, 1)} км${e.in_control_box ? " — опасно близко" : ""}`)));
+    `${hm(e.tca)}: ${e.object_name} в ${num(e.min_range_km, 1)} км, ${e.pass_type || ""} пролёт ${num(e.rel_speed_km_s, 1)} км/с` +
+    `${e.in_control_box ? ` — опасно близко (1 г на такой скорости ≈ ${num(e.tnt_equiv_per_gram_g)} г тротила)` : ""}`)));
   const watchText = r.mode === "now" ? "Следить за этим вариантом" : "Показать предупреждения для этого варианта";
   put(box,
     el("div", { class: "vh" }, el("b", {}, `Начало ${hm(w.start)} → конец ${hm(w.end)} UTC`),
@@ -416,7 +477,10 @@ function renderRec() {
         .map((s) => el("span", { class: "flag warn", title: s.last_error || "" }, `${s.source}: ${s.state}`))),
     el("ul", {}, ...r.explanation.text.map((t) => el("li", {}, t))),
     r.recheck_after?.length ? el("div", { class: "muted" }, "Когда пересчитать: " +
-      r.recheck_after.slice(0, 3).map((x) => `${dm(x.time)} — ${x.reason}`).join("; ")) : null);
+      r.recheck_after.slice(0, 3).map((x) => `${dm(x.time)} UTC — ${x.reason}`).join("; ")) : null,
+    el("h3", {}, "Ограничения оценки"),
+    el("ul", { class: "muted" }, ...(r.limitations || []).map((t) => el("li", {}, t))),
+    el("div", { class: "muted" }, `Версия алгоритма ${r.algorithm_version}; настройки ${Object.entries(r.config?.sha256 || {}).map(([k, v]) => `${k} ${v}`).join(", ")}`));
 }
 
 function seriesArr(key) { return (S.res.series[key] || []).map((v) => (v === null ? null : v)); }
@@ -434,7 +498,8 @@ function renderTimeline() {
         fillcolor: CLASS_COLOR[iv.class], opacity: iv.kind === "observation" || iv.kind === "none" ? 0.95 : 0.7 });
       xs.push(new Date((Date.parse(iv.from) + Date.parse(iv.to)) / 2).toISOString()); ys.push(0.5); cd.push([m, i]);
       texts.push(`<b>${MECH_TEXT[m]}: ${CLASS_TEXT[iv.class]}</b><br>${esc(reasonText(iv.reason, iv.reason_text))}<br>` +
-        `${KIND_TEXT[iv.kind] || iv.kind} · надёжность ${CONF_TEXT[iv.confidence] || iv.confidence}<br>${dm(iv.from)}–${hm(iv.to)}`);
+        `${KIND_TEXT[iv.kind] || iv.kind} · надёжность ${CONF_TEXT[iv.confidence] || iv.confidence}` +
+        (iv.confidence_reason ? `<br><i>${esc(iv.confidence_reason)}</i>` : "") + `<br>${dm(iv.from)}–${hm(iv.to)} UTC`);
     });
     traces.push({ x: xs, y: ys, yaxis: yref, mode: "markers", marker: { size: 14, opacity: 0 }, hoverinfo: "text",
       text: texts, customdata: cd, showlegend: false });
@@ -550,7 +615,7 @@ function renderWindows() {
     return el("tr", { "data-id": w.id, class: [w.id === r.recommendation.window ? "rec" : "", w.id === S.sel ? "sel" : ""].join(" "),
       onclick: () => selectWindow(w.id) },
       el("td", {}, `${dm(w.start)} – ${hm(w.end)}${w.id === r.recommendation.window ? " ★" : ""}${w.is_planned ? " (план)" : ""}`),
-      el("td", {}, el("span", { class: `pill ${w.status}` }, STATUS_TEXT[w.status] || w.status)),
+      el("td", {}, el("span", { class: `pill ${w.status}`, title: w.rule_text ? `${w.rule}: ${w.rule_text}` : "" }, STATUS_TEXT[w.status] || w.status)),
       ...cells,
       mechs.includes("radiation") ? el("td", { class: "num" }, num(w.mechanisms.radiation.exposure_pfu_min, 1)) : null,
       el("td", { class: "num" }, ov.robust ? `≥ ${ov.margin_min} мин ок` : `стоп через ${num(ov.first_critical_after_end_min)} мин`),
@@ -589,7 +654,8 @@ function renderMap() {
     const idx = conj.map((e) => t.findIndex((x) => x >= e.tca));
     traces.push({ type: "scattergeo", lat: idx.map((i) => s.lat[i]), lon: idx.map((i) => s.lon[i]), mode: "markers",
       marker: { size: 12, symbol: "x", color: conj.map((e) => (e.in_control_box ? "#ff5a5a" : "#cfd5dc")) },
-      text: conj.map((e) => `${e.object_name} · ${hm(e.tca)} · ${num(e.min_range_km, 1)} км`), hoverinfo: "text", name: "сближения" });
+      text: conj.map((e) => `${e.object_name} · ${hm(e.tca)} · ${num(e.min_range_km, 1)} км · ${e.pass_type || ""} ${num(e.rel_speed_km_s, 1)} км/с`),
+      hoverinfo: "text", name: "сближения" });
   }
   Plotly.react("map", traces, {
     paper_bgcolor: "#161d25", font: { color: "#dfe6ee", size: 11 }, margin: { l: 0, r: 0, t: 0, b: 0 },
@@ -620,7 +686,8 @@ function openEvidence(keys, title, iv) {
     body.append(el("div", { class: "ev" },
       el("div", { class: "h" }, el("span", { class: `kind ${iv.kind}` }, KIND_TEXT[iv.kind] || iv.kind), el("span", { class: "layer" }, "итог для выхода")),
       el("div", { class: "kv" }, el("b", {}, "Оценка"), CLASS_TEXT[iv.class], el("b", {}, "Почему"), reasonText(iv.reason, iv.reason_text),
-        el("b", {}, "Когда"), `${dm(iv.from)} – ${dm(iv.to)} UTC`, el("b", {}, "Надёжность"), CONF_TEXT[iv.confidence] || iv.confidence)));
+        el("b", {}, "Когда"), `${dm(iv.from)} – ${dm(iv.to)} UTC`, el("b", {}, "Надёжность"), CONF_TEXT[iv.confidence] || iv.confidence,
+        iv.confidence_reason ? el("b", {}, "От чего зависит") : null, iv.confidence_reason || null)));
   }
   const ev = S.res.evidence;
   for (const k of keys || []) {
@@ -629,12 +696,14 @@ function openEvidence(keys, title, iv) {
     const kv = el("div", { class: "kv" });
     for (const [f, v] of Object.entries(e)) {
       if (["layer", "kind", "raw_ref"].includes(f) || v === null) continue;
-      kv.append(el("b", {}, f), el("span", { html: fmtVal(v) }));
+      const val = TIME_FIELDS.includes(f) && typeof v === "string" && v.endsWith("Z") ? `${dm(v)} UTC` : v;
+      kv.append(el("b", { title: f }, FIELD_TEXT[f] || f), el("span", { html: fmtVal(val) }));
     }
     const links = el("div", { class: "flags" });
     const rr = e.raw_ref || {};
     const ids = rr.raw_ids || (rr.raw_id ? [rr.raw_id] : []);
-    ids.slice(0, 6).forEach((id) => links.append(el("a", { class: "btn", href: `/api/i/raw/${id}`, target: "_blank" }, `исходный файл #${id}`),
+    const loc = rr.locator ? `?locator=${encodeURIComponent(rr.locator)}` : "";
+    ids.slice(0, 6).forEach((id) => links.append(el("a", { class: "btn", href: `/api/i/raw/${id}${loc}`, target: "_blank" }, `исходный файл #${id}`),
       el("a", { class: "btn", href: `/api/i/raw/${id}/meta`, target: "_blank" }, "откуда и когда скачан")));
     if (rr.locator) links.append(el("span", { class: "flag" }, `запись: ${rr.locator}`));
     body.append(el("div", { class: "ev" },
@@ -676,10 +745,14 @@ function renderSources() {
         "Отброшено (вышли позже)", "Восстановлено из архива", "Отключён/заморожен"].map((h) => el("th", {}, h)))),
       el("tbody", {}, ...rows))),
     el("h3", {}, "Орбита МКС"),
-    el("div", { class: "kv" }, el("b", {}, "Источник"), r.orbit.source, el("b", {}, "На момент"), dm(r.orbit.epoch),
-      el("b", {}, "Опубликовано"), dm(r.orbit.created), el("b", {}, "Давность"), `${num(r.orbit.age_at_cutoff_h, 1)} ч`,
+    el("div", { class: "kv" }, el("b", {}, "Источник"), r.orbit.source, el("b", {}, "Эпоха элементов"), `${dm(r.orbit.epoch)} UTC`,
+      el("b", {}, "Опубликовано"), `${dm(r.orbit.created)} UTC`, el("b", {}, "Давность"),
+      r.orbit.age_at_cutoff_h >= 0 ? `${num(r.orbit.age_at_cutoff_h, 1)} ч` : `эпоха позже выбранного момента на ${num(-r.orbit.age_at_cutoff_h, 1)} ч (разбор по архиву)`,
       el("b", {}, "TLE"), el("code", {}, `${r.orbit.line1}\n${r.orbit.line2}`)),
-    el("h3", {}, "Сбор данных прямо сейчас"), el("div", { id: "liveSources", class: "tablewrap" }, "загрузка…"));
+    el("h3", {}, "Сбор данных прямо сейчас"),
+    el("p", { class: "hint" }, "«Заморозить» здесь останавливает обновление источника для всех пользователей сервиса (не дольше 2 ч). " +
+      "Чтобы проверить поведение при сбое только в своём расчёте, используйте «Дополнительно» → «Проверка сбоя» в форме."),
+    el("div", { id: "liveSources", class: "tablewrap" }, "загрузка…"));
 }
 
 async function loadLiveSources() {
@@ -695,13 +768,15 @@ async function loadLiveSources() {
   };
   box.innerHTML = "";
   box.append(el("table", { class: "tbl" },
-    el("thead", {}, el("tr", {}, ...["Источник", "Состояние", "Последние данные", "Давность", "Как часто", "Ошибка", ""].map((h) => el("th", {}, h)))),
+    el("thead", {}, el("tr", {}, ...["Источник", "Состояние", "Последние данные, UTC", "Давность", "Последняя успешная загрузка, UTC",
+      "Как часто", "Ошибка", ""].map((h) => el("th", {}, h)))),
     el("tbody", {}, ...list.map((s) => el("tr", {},
       el("td", { title: s.title || "" }, s.title || s.source), el("td", {}, el("span", { class: `chip ${s.status}` }, s.status)),
-      el("td", {}, dm(s.latest_data)), el("td", { class: "num" }, ageText(s.age_s)),
+      el("td", {}, dm(s.latest_data)), el("td", { class: "num" }, ageText(s.age_s)), el("td", {}, dm(s.last_success)),
       el("td", { class: "num" }, ageText(s.interval_s)), el("td", { title: s.last_error || "" }, (s.last_error || "—").slice(0, 40)),
       el("td", {}, el("button", { class: "btn", type: "button", onclick: () => act(s.source, "refresh") }, "обновить"), " ",
-        s.paused ? el("button", { class: "btn", type: "button", onclick: () => act(s.source, "resume") }, "возобновить")
+        s.paused ? el("button", { class: "btn", type: "button", title: s.paused_until ? `снимется сама в ${dm(s.paused_until)} UTC` : "",
+          onclick: () => act(s.source, "resume") }, "возобновить")
           : el("button", { class: "btn", type: "button", onclick: () => act(s.source, "pause") }, "заморозить")))))));
 }
 
@@ -711,6 +786,24 @@ function renderChips(list) {
   box.innerHTML = "";
   box.append(el("span", { class: `chip ${bad.length ? "stale" : "ok"}`, title: bad.map((s) => `${s.title || s.source}: ${s.status}`).join("\n") },
     bad.length ? `данные: ${bad.length} из ${list.length} с замечаниями` : `данные: все ${list.length} источников в порядке`));
+  const paused = list.filter((s) => s.paused).map((s) => `${OVERRIDE_SOURCES[s.source] || s.title || s.source}` +
+    (s.paused_until ? ` до ${hm(s.paused_until)} UTC` : ""));
+  if (paused.length) box.append(el("span", { class: "chip paused", title: "Обновление заморожено для всех пользователей. " +
+    "Возобновить — «Подробности» → «Данные и источники». Проверить сбой только для своего расчёта — «Дополнительно» в форме." },
+  `заморожено: ${paused.join(", ")}`));
+  const b = S.boot;
+  if (b && (b.state === "running" || b.state === "errors")) {
+    const errs = Object.entries(b.sources || {}).filter(([, x]) => x.errors?.length).map(([n, x]) => `${n}: ${x.errors[0]}`);
+    box.append(el("span", { class: `chip ${b.state === "running" ? "stale" : "error"}`,
+      title: b.state === "running" ? `Догружается архив (${(b.ranges || []).map((r) => `${r.from} – ${r.to}`).join(", ")}): ${b.current || ""}. ` +
+        "Расчёты на ещё не загруженные дни покажут «нет данных»." : `Ошибки загрузки архива (повтор при следующем запуске):\n${errs.join("\n")}` },
+    b.state === "running" ? `архив: загружено ${b.done_days ?? 0} из ${b.total_days ?? "…"} дней` : "архив: есть ошибки загрузки"));
+  }
+}
+
+async function refreshChips() {
+  try { S.boot = await api("/api/i/bootstrap"); } catch { S.boot = null; }
+  try { renderChips(await api("/api/i/sources")); } catch { /* сервис сбора может ещё стартовать */ }
 }
 
 function renderVerifyPane() {
@@ -730,14 +823,7 @@ async function runVerify() {
   out.textContent = "сравниваю…";
   try {
     const { run_id } = await api(`/api/a/runs/${S.run.run_id}/verify`, { method: "POST" });
-    let v;
-    for (;;) {
-      v = await api(`/api/a/runs/${run_id}`);
-      if (v.status === "done" || v.status === "failed") break;
-      await new Promise((ok) => setTimeout(ok, 700));
-    }
-    if (v.status === "failed") throw new Error(v.error);
-    const r = v.result;
+    const r = (await waitRun(run_id, null, `/api/a/runs/${run_id}`)).result;
     out.innerHTML = "";
     const tb = el("tbody");
     for (const [m, x] of Object.entries(r.mechanisms)) {
@@ -886,12 +972,32 @@ function openHelp() {
   </ol>
   <h4>Как читать ответ</h4>
   <ul>
-    <li>Крупно — лучшее время начала и почему, по двум видам опасности: <b>частицы от Солнца</b> и <b>космический мусор</b>.</li>
+    <li>Крупно — лучшее время начала и почему, по двум видам опасности: <b>частицы от Солнца</b> и <b>мусор и метеороиды</b>.
+      Если хороших вариантов нет, так и написано — и показан наименее неблагоприятный.</li>
     <li>Полоса «Все варианты начала»: каждый квадратик — вариант начала. Зелёный — хороший (★ — лучший),
       оранжевый — хуже, красный — не рекомендуется (есть стоп-фактор), серый — нет данных. Нажмите на квадратик — узнаете почему.</li>
     <li>«Надёжность прогноза: низкая» — дальше 6 часов известна только суточная вероятность, пересчитайте ближе к делу.</li>
     <li>«Почему так? Откуда данные» — какие измерения и прогнозы использованы, когда опубликованы, ссылка на исходный файл.</li>
   </ul>
+  <h4>Как выбирается лучший вариант</h4>
+  <ol>
+    <li>В варианте есть стоп-фактор (солнечная буря S3 и выше, частицы долетают до станции, опасное сближение) — он не рекомендуется.</li>
+    <li>На части варианта нет данных — «нужно проверить»: нехватка данных не считается хорошей новостью.</li>
+    <li>Из остальных лучше тот, где меньше минут нежелательных условий: сначала по частицам от Солнца, затем по мусору и метеороидам.
+      Если один вариант лучше по одному, а другой по другому, решает приоритет: радиация важнее.</li>
+    <li>При равенстве — меньше минут, где поток частиц не оценён числом, меньше частиц за выход, меньше минут метеорных
+      потоков (это статистика, поэтому она идёт последней), больше запас, если работа затянется.</li>
+    <li>Разница меньше 5 минут (и меньше 20 % потока) — варианты равноценны.</li>
+  </ol>
+  <h4>От чего зависит надёжность</h4>
+  <ul>
+    <li><b>высокая</b> — свежее измерение, не старше 15 минут;</li>
+    <li><b>средняя</b> — наш прогноз на ближайшие 3 часа, действующее предупреждение SWPC, сближения в ближайшие 12 часов
+      (по проверке на 2024 г. такие подтверждаются в 9 случаях из 10);</li>
+    <li><b>низкая</b> — прогноз на 3–6 часов, только суточная вероятность, сближения дальше 12 часов (с новыми данными
+      появляется примерно каждое четвёртое), статистика метеорных потоков, магнитная буря неизвестна и принята с запасом.</li>
+  </ul>
+  <p>Точная причина — в подсказке на графике и в «Откуда данные».</p>
   <h4>Цвета</h4>
   <div class="legend big"><span><i class="c-acceptable"></i>без замечаний</span><span><i class="c-undesirable"></i>нежелательно</span>
     <span><i class="c-critical"></i>стоп-фактор — выход не рекомендуется</span><span><i class="c-no_data"></i>нет данных — оценить нельзя</span></div>
@@ -907,7 +1013,10 @@ function openHelp() {
       до станции долетает только часть — магнитное поле Земли защищает, лучше у экватора, хуже у полюсов.</li>
     <li><b>Магнитная буря (Kp)</b> — ослабляет защиту, частицы проникают ближе к экватору.</li>
     <li><b>ЮАА</b> — зона над Южной Атлантикой, где магнитное поле слабее и радиация выше. Станция пролетает её несколько раз в сутки.</li>
-    <li><b>Сближение</b> — отслеживаемый объект (спутник, обломок) проходит опасно близко к станции.</li>
+    <li><b>Мусор и метеороиды</b> — отслеживаемые объекты (спутники, обломки крупнее ~10 см) проверяются на проход через зону
+      контроля станции; мелкие частицы, которых не видно поштучно, учитываются статистически по прогнозу метеорных потоков NASA.</li>
+    <li><b>Почему сближение — стоп-фактор</b> — на орбите относительная скорость доходит до 15 км/с: 1 г вещества несёт около
+      100 кДж, как 25 г тротила. Поэтому размер объекта и вероятность попадания не взвешиваются.</li>
     <li><b>UTC</b> — всемирное время (Москва = UTC + 3).</li>
   </ul>
   <p class="muted">Это оценка внешних условий, а не доза облучения. Решение о выходе принимают специалисты.</p>
@@ -962,8 +1071,8 @@ function init() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
   const tick = () => { $("clock").textContent = new Date().toISOString().slice(11, 16) + " UTC"; };
   tick(); setInterval(tick, 10000);
-  api("/api/i/sources").then(renderChips).catch(() => {});
-  setInterval(() => api("/api/i/sources").then(renderChips).catch(() => {}), 60000);
+  refreshChips();
+  setInterval(refreshChips, 30000);
   refreshRuns();
   loadRecentAlerts().then(connectAlerts);
   const run = new URLSearchParams(location.search).get("run");

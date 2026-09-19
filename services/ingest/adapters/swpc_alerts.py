@@ -8,11 +8,11 @@ from __future__ import annotations
 import html
 import json
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
-from common.db import insert_ignore, messages
-from common.timeutil import parse_swpc_time
-from services.ingest.adapters.base import Adapter, IngestResult
+from common.db import insert_ignore, messages, source_status
+from common.timeutil import parse_swpc_time, utcnow
+from services.ingest.adapters.base import Adapter, IngestResult, days_with_data, gap_start, last_time
 
 _FIELDS = {
     "code": r"Space Weather Message Code:\s*(\w+)",
@@ -83,9 +83,26 @@ class SwpcAlerts(Adapter):
     has_backfill = True
 
     def live(self, engine) -> IngestResult:
+        """Живая лента хранит ~месяц сообщений; при первом запуске или простое дольше 20 сут — ещё месячные архивы FTP.
+        Сообщения выходят по событию, поэтому пропуск считается от последней успешной проверки ленты."""
         result = IngestResult(self.name)
+        now = utcnow()
+        last = last_time(engine, source_status.c.last_success, source_status.c.source == self.name)
         self.fetch_and_store(engine, self.cfg["live_url"], result)
+        if last is None or now - last > timedelta(days=20):
+            self._fill(result, "архива FTP", lambda: self.backfill(engine, gap_start(last, now, 31), now.date()))
         return result
+
+    def covered_days(self, conn, start: date, end: date) -> set[date]:
+        """Архив — файл на месяц: месяц загружен, если за него есть сообщения."""
+        days = days_with_data(conn, messages.c.issued_at, [messages.c.source == self.name], start, end)
+        months = {(d.year, d.month) for d in days}
+        out, d = set(), start
+        while d <= end:
+            if (d.year, d.month) in months:
+                out.add(d)
+            d += timedelta(days=1)
+        return out
 
     def backfill(self, engine, start: date, end: date) -> IngestResult:
         result = IngestResult(self.name)

@@ -119,6 +119,7 @@ source_status = Table(
     Column("last_error", Text),
     Column("consecutive_failures", Integer, default=0),
     Column("paused", Boolean, default=False),
+    Column("paused_at", DateTime),              # когда заморожен (автовозобновление — config/sources.yaml, ingest)
     Column("updated_at", DateTime),
 )
 
@@ -178,6 +179,16 @@ alerts = Table(
 )
 
 
+# Дни архива, которых нет у поставщика (404, пропуски архива): не запрашиваются повторно до recheck
+archive_days = Table(
+    "archive_days", metadata,
+    Column("source", String(64), primary_key=True),
+    Column("day", String(10), primary_key=True),       # YYYY-MM-DD
+    Column("status", String(16), nullable=False),      # unavailable
+    Column("checked_at", DateTime, nullable=False),
+)
+
+
 def _sqlite_pragmas(dbapi_conn, _record):
     cur = dbapi_conn.cursor()
     cur.execute("PRAGMA journal_mode=WAL")
@@ -199,13 +210,31 @@ def get_engine(url: str | None = None) -> Engine:
     return engine
 
 
+# колонки, добавленные после первой версии схемы: create_all не меняет существующие таблицы
+_ADDED_COLUMNS = {"source_status": {"paused_at": "TIMESTAMP"}}
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    from sqlalchemy import inspect
+
+    insp = inspect(engine)
+    for table, cols in _ADDED_COLUMNS.items():
+        have = {c["name"] for c in insp.get_columns(table)}
+        for name, sqltype in cols.items():
+            if name not in have:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}"))
+
+
 def init_db(engine: Engine | None = None) -> None:
     """Создаёт таблицы. Несколько сервисов стартуют одновременно — при гонке повторяем."""
     import time
 
     for attempt in range(6):
         try:
-            metadata.create_all(engine or get_engine())
+            engine = engine or get_engine()
+            metadata.create_all(engine)
+            _add_missing_columns(engine)
             return
         except Exception:
             if attempt == 5:

@@ -10,8 +10,8 @@ import re
 from datetime import date, datetime, timedelta
 
 from common.db import insert_ignore, records
-from common.timeutil import MONTHS, parse_swpc_time
-from services.ingest.adapters.base import Adapter, IngestResult
+from common.timeutil import MONTHS, parse_swpc_time, utcnow
+from services.ingest.adapters.base import Adapter, IngestResult, days_with_data, gap_start, last_time
 
 _DAY_TOKEN = re.compile(r"([A-Z][a-z]{2})\s+(\d{1,2})")
 
@@ -83,14 +83,25 @@ def parse_rsga(text: str) -> dict:
     return {"issued": issued, "probs": probs}
 
 
-class Swpc3Day(Adapter):
-    name = "swpc_3day"
+class _IssuedText(Adapter):
+    """Текстовый прогноз: живой файл — только последний выпуск; пропущенные выпуски — из архива NCEI."""
     has_backfill = True
 
     def live(self, engine) -> IngestResult:
         result = IngestResult(self.name)
+        now = utcnow()
+        last = last_time(engine, records.c.issued_at, records.c.source == self.name)
         self.fetch_and_store(engine, self.cfg["live_url"], result)
+        if last is None or now - last > timedelta(hours=36):
+            self._fill(result, "архива NCEI", lambda: self.backfill(engine, gap_start(last, now, 3), now.date()))
         return result
+
+    def covered_days(self, conn, start: date, end: date) -> set[date]:
+        return days_with_data(conn, records.c.issued_at, [records.c.source == self.name], start, end)
+
+
+class Swpc3Day(_IssuedText):
+    name = "swpc_3day"
 
     def backfill(self, engine, start: date, end: date) -> IngestResult:
         result = IngestResult(self.name)
@@ -122,14 +133,8 @@ class Swpc3Day(Adapter):
         return insert_ignore(conn, records, rows)
 
 
-class SwpcRsga(Adapter):
+class SwpcRsga(_IssuedText):
     name = "swpc_rsga"
-    has_backfill = True
-
-    def live(self, engine) -> IngestResult:
-        result = IngestResult(self.name)
-        self.fetch_and_store(engine, self.cfg["live_url"], result)
-        return result
 
     def backfill(self, engine, start: date, end: date) -> IngestResult:
         result = IngestResult(self.name)

@@ -1,0 +1,746 @@
+{
+ "sep_0510/team": {
+  "adverse": {
+   "hits_min": 18733,
+   "misses_min": 372,
+   "false_alarm_min": 992,
+   "correct_negative_min": 693,
+   "pod": 0.981,
+   "far": 0.05
+  },
+  "critical": {
+   "hits_min": 15,
+   "misses_min": 145,
+   "false_alarm_min": 137,
+   "correct_negative_min": 20493,
+   "pod": 0.094,
+   "far": 0.901
+  },
+  "recommended_bad": 3,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "sep_0510/persistence": {
+  "adverse": {
+   "hits_min": 14272,
+   "misses_min": 4833,
+   "false_alarm_min": 848,
+   "correct_negative_min": 837,
+   "pod": 0.747,
+   "far": 0.056
+  },
+  "critical": {
+   "hits_min": 10,
+   "misses_min": 150,
+   "false_alarm_min": 16,
+   "correct_negative_min": 20614,
+   "pod": 0.062,
+   "far": 0.615
+  },
+  "recommended_bad": 3,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "sep_0510/swpc_only": {
+  "adverse": {
+   "hits_min": 19105,
+   "misses_min": 0,
+   "false_alarm_min": 1685,
+   "correct_negative_min": 0,
+   "pod": 1.0,
+   "far": 0.081
+  },
+  "critical": {
+   "hits_min": 9,
+   "misses_min": 151,
+   "false_alarm_min": 17,
+   "correct_negative_min": 20613,
+   "pod": 0.056,
+   "far": 0.654
+  },
+  "recommended_bad": 3,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "sep_0513/team": {
+  "adverse": {
+   "hits_min": 15821,
+   "misses_min": 292,
+   "false_alarm_min": 124,
+   "correct_negative_min": 773,
+   "pod": 0.982,
+   "far": 0.008
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 17010,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 9,
+  "cutoffs": 9
+ },
+ "sep_0513/persistence": {
+  "adverse": {
+   "hits_min": 11340,
+   "misses_min": 4773,
+   "false_alarm_min": 0,
+   "correct_negative_min": 897,
+   "pod": 0.704,
+   "far": 0.0
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 17010,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 9,
+  "cutoffs": 9
+ },
+ "sep_0513/swpc_only": {
+  "adverse": {
+   "hits_min": 13858,
+   "misses_min": 2255,
+   "false_alarm_min": 897,
+   "correct_negative_min": 0,
+   "pod": 0.86,
+   "far": 0.061
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 17010,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 9,
+  "cutoffs": 9
+ },
+ "sep_0608/team": {
+  "adverse": {
+   "hits_min": 10964,
+   "misses_min": 4608,
+   "false_alarm_min": 376,
+   "correct_negative_min": 1062,
+   "pod": 0.704,
+   "far": 0.033
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 17010,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 9,
+  "cutoffs": 9
+ },
+ "sep_0608/persistence": {
+  "adverse": {
+   "hits_min": 10964,
+   "misses_min": 4608,
+   "false_alarm_min": 376,
+   "correct_negative_min": 1062,
+   "pod": 0.704,
+   "far": 0.033
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 28,
+   "correct_negative_min": 16982,
+   "pod": null,
+   "far": 1.0
+  },
+  "recommended_bad": 0,
+  "recommended_total": 9,
+  "cutoffs": 9
+ },
+ "sep_0608/swpc_only": {
+  "adverse": {
+   "hits_min": 4854,
+   "misses_min": 10718,
+   "false_alarm_min": 0,
+   "correct_negative_min": 1438,
+   "pod": 0.312,
+   "far": 0.0
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 17010,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 9,
+  "cutoffs": 9
+ },
+ "warn_0612/team": {
+  "adverse": {
+   "hits_min": 25,
+   "misses_min": 75,
+   "false_alarm_min": 1054,
+   "correct_negative_min": 6406,
+   "pod": 0.25,
+   "far": 0.977
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 7560,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 4,
+  "cutoffs": 4
+ },
+ "warn_0612/persistence": {
+  "adverse": {
+   "hits_min": 25,
+   "misses_min": 75,
+   "false_alarm_min": 1054,
+   "correct_negative_min": 6406,
+   "pod": 0.25,
+   "far": 0.977
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 7560,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 4,
+  "cutoffs": 4
+ },
+ "warn_0612/swpc_only": {
+  "adverse": {
+   "hits_min": 25,
+   "misses_min": 75,
+   "false_alarm_min": 1054,
+   "correct_negative_min": 6406,
+   "pod": 0.25,
+   "far": 0.977
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 7560,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 4,
+  "cutoffs": 4
+ },
+ "quiet_0524/team": {
+  "adverse": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "quiet_0524/persistence": {
+  "adverse": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "quiet_0524/swpc_only": {
+  "adverse": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_0209/team": {
+  "adverse": {
+   "hits_min": 13373,
+   "misses_min": 6175,
+   "false_alarm_min": 66,
+   "correct_negative_min": 1176,
+   "pod": 0.684,
+   "far": 0.005
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_0209/persistence": {
+  "adverse": {
+   "hits_min": 13164,
+   "misses_min": 6384,
+   "false_alarm_min": 66,
+   "correct_negative_min": 1176,
+   "pod": 0.673,
+   "far": 0.005
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_0209/swpc_only": {
+  "adverse": {
+   "hits_min": 10644,
+   "misses_min": 8904,
+   "false_alarm_min": 66,
+   "correct_negative_min": 1176,
+   "pod": 0.545,
+   "far": 0.006
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_0212/team": {
+  "adverse": {
+   "hits_min": 19883,
+   "misses_min": 0,
+   "false_alarm_min": 907,
+   "correct_negative_min": 0,
+   "pod": 1.0,
+   "far": 0.044
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_0212/persistence": {
+  "adverse": {
+   "hits_min": 15125,
+   "misses_min": 4758,
+   "false_alarm_min": 535,
+   "correct_negative_min": 372,
+   "pod": 0.761,
+   "far": 0.034
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_0212/swpc_only": {
+  "adverse": {
+   "hits_min": 8370,
+   "misses_min": 11513,
+   "false_alarm_min": 535,
+   "correct_negative_min": 372,
+   "pod": 0.421,
+   "far": 0.06
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20790,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_0323/team": {
+  "adverse": {
+   "hits_min": 15288,
+   "misses_min": 4590,
+   "false_alarm_min": 0,
+   "correct_negative_min": 912,
+   "pod": 0.769,
+   "far": 0.0
+  },
+  "critical": {
+   "hits_min": 5,
+   "misses_min": 70,
+   "false_alarm_min": 464,
+   "correct_negative_min": 20251,
+   "pod": 0.067,
+   "far": 0.989
+  },
+  "recommended_bad": 7,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_0323/persistence": {
+  "adverse": {
+   "hits_min": 15120,
+   "misses_min": 4758,
+   "false_alarm_min": 0,
+   "correct_negative_min": 912,
+   "pod": 0.761,
+   "far": 0.0
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 75,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20715,
+   "pod": 0.0,
+   "far": null
+  },
+  "recommended_bad": 5,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_0323/swpc_only": {
+  "adverse": {
+   "hits_min": 12238,
+   "misses_min": 7640,
+   "false_alarm_min": 0,
+   "correct_negative_min": 912,
+   "pod": 0.616,
+   "far": 0.0
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 75,
+   "false_alarm_min": 0,
+   "correct_negative_min": 20715,
+   "pod": 0.0,
+   "far": null
+  },
+  "recommended_bad": 4,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_1009/team": {
+  "adverse": {
+   "hits_min": 16518,
+   "misses_min": 3392,
+   "false_alarm_min": 492,
+   "correct_negative_min": 388,
+   "pod": 0.83,
+   "far": 0.029
+  },
+  "critical": {
+   "hits_min": 960,
+   "misses_min": 8387,
+   "false_alarm_min": 764,
+   "correct_negative_min": 10679,
+   "pod": 0.103,
+   "far": 0.443
+  },
+  "recommended_bad": 10,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_1009/persistence": {
+  "adverse": {
+   "hits_min": 16518,
+   "misses_min": 3392,
+   "false_alarm_min": 492,
+   "correct_negative_min": 388,
+   "pod": 0.83,
+   "far": 0.029
+  },
+  "critical": {
+   "hits_min": 2720,
+   "misses_min": 6627,
+   "false_alarm_min": 4840,
+   "correct_negative_min": 6603,
+   "pod": 0.291,
+   "far": 0.64
+  },
+  "recommended_bad": 7,
+  "recommended_total": 7,
+  "cutoffs": 11
+ },
+ "hold_1009/swpc_only": {
+  "adverse": {
+   "hits_min": 8952,
+   "misses_min": 10958,
+   "false_alarm_min": 492,
+   "correct_negative_min": 388,
+   "pod": 0.45,
+   "far": 0.052
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 9347,
+   "false_alarm_min": 0,
+   "correct_negative_min": 11443,
+   "pod": 0.0,
+   "far": null
+  },
+  "recommended_bad": 11,
+  "recommended_total": 11,
+  "cutoffs": 11
+ },
+ "hold_quiet_0219/team": {
+  "adverse": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 17010,
+   "pod": null,
+   "far": null
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 17010,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 9,
+  "cutoffs": 9
+ },
+ "hold_quiet_0219/persistence": {
+  "adverse": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 17010,
+   "pod": null,
+   "far": null
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 17010,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 9,
+  "cutoffs": 9
+ },
+ "hold_quiet_0219/swpc_only": {
+  "adverse": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 17010,
+   "pod": null,
+   "far": null
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 0,
+   "false_alarm_min": 0,
+   "correct_negative_min": 17010,
+   "pod": null,
+   "far": null
+  },
+  "recommended_bad": 0,
+  "recommended_total": 9,
+  "cutoffs": 9
+ },
+ "настройка/team": {
+  "adverse": {
+   "hits_min": 45543,
+   "misses_min": 5347,
+   "false_alarm_min": 2546,
+   "correct_negative_min": 29724,
+   "pod": 0.895,
+   "far": 0.053
+  },
+  "critical": {
+   "hits_min": 15,
+   "misses_min": 145,
+   "false_alarm_min": 137,
+   "correct_negative_min": 82863,
+   "pod": 0.094,
+   "far": 0.901
+  },
+  "cutoffs": 44
+ },
+ "настройка/persistence": {
+  "adverse": {
+   "hits_min": 36601,
+   "misses_min": 14289,
+   "false_alarm_min": 2278,
+   "correct_negative_min": 29992,
+   "pod": 0.719,
+   "far": 0.059
+  },
+  "critical": {
+   "hits_min": 10,
+   "misses_min": 150,
+   "false_alarm_min": 44,
+   "correct_negative_min": 82956,
+   "pod": 0.062,
+   "far": 0.815
+  },
+  "cutoffs": 44
+ },
+ "настройка/swpc_only": {
+  "adverse": {
+   "hits_min": 37842,
+   "misses_min": 13048,
+   "false_alarm_min": 3636,
+   "correct_negative_min": 28634,
+   "pod": 0.744,
+   "far": 0.088
+  },
+  "critical": {
+   "hits_min": 9,
+   "misses_min": 151,
+   "false_alarm_min": 17,
+   "correct_negative_min": 82983,
+   "pod": 0.056,
+   "far": 0.654
+  },
+  "cutoffs": 44
+ },
+ "отложенные/team": {
+  "adverse": {
+   "hits_min": 65062,
+   "misses_min": 14157,
+   "false_alarm_min": 1465,
+   "correct_negative_min": 19486,
+   "pod": 0.821,
+   "far": 0.022
+  },
+  "critical": {
+   "hits_min": 965,
+   "misses_min": 8457,
+   "false_alarm_min": 1228,
+   "correct_negative_min": 89520,
+   "pod": 0.102,
+   "far": 0.56
+  },
+  "cutoffs": 53
+ },
+ "отложенные/persistence": {
+  "adverse": {
+   "hits_min": 59927,
+   "misses_min": 19292,
+   "false_alarm_min": 1093,
+   "correct_negative_min": 19858,
+   "pod": 0.756,
+   "far": 0.018
+  },
+  "critical": {
+   "hits_min": 2720,
+   "misses_min": 6702,
+   "false_alarm_min": 4840,
+   "correct_negative_min": 85908,
+   "pod": 0.289,
+   "far": 0.64
+  },
+  "cutoffs": 53
+ },
+ "отложенные/swpc_only": {
+  "adverse": {
+   "hits_min": 40204,
+   "misses_min": 39015,
+   "false_alarm_min": 1093,
+   "correct_negative_min": 19858,
+   "pod": 0.508,
+   "far": 0.026
+  },
+  "critical": {
+   "hits_min": 0,
+   "misses_min": 9422,
+   "false_alarm_min": 0,
+   "correct_negative_min": 90748,
+   "pod": 0.0,
+   "far": null
+  },
+  "cutoffs": 53
+ }
+}
