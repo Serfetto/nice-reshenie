@@ -9,6 +9,7 @@ from common.timeutil import utcnow
 from services.assessment import telegram, watch
 
 BOT_ID = "7000000001"
+bot_log: dict = {}  # клавиатуры отправленных сообщений и меню команд — для проверок кнопок
 
 
 @pytest.fixture
@@ -16,14 +17,20 @@ def bot(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATABASE_URL", f"sqlite:///{(tmp_path / 't.db').as_posix()}")
     db.get_engine.cache_clear()
     db.init_db()
-    sent = []
+    sent, buttons, menu = [], [], []
+    bot_log.update(buttons=buttons, menu=menu)
 
     def fake_call(method, http_timeout=15, **params):
         if method == "sendMessage":
             if params["chat_id"] == 666:
                 raise telegram.TelegramError("HTTP 403: Forbidden: bot was blocked by the user", 403)
             sent.append((params["chat_id"], params["text"]))
+            buttons.append([b["text"] for row in params["reply_markup"]["keyboard"] for b in row]
+                           if "reply_markup" in params else None)
             return {}
+        if method == "setMyCommands":
+            menu.extend(c["command"] for c in params["commands"])
+            return True
         if method == "getMe":
             return {"id": int(BOT_ID), "username": "test_vkd_bot"}
         raise AssertionError(method)
@@ -56,7 +63,26 @@ def test_start_subscribes_and_confirms(bot):
     telegram.handle(_msg(42, "/stop@test_vkd_bot"))
     assert "Оповещения отключены" in bot[-1][1] and telegram.active_chats() == []
     telegram.handle(_msg(42, "привет"))
-    assert "/start" in bot[-1][1]
+    assert "Не понял команду" in bot[-1][1]
+
+
+def test_buttons_work_like_commands(bot):
+    buttons = bot_log["buttons"]
+    telegram.handle(_msg(42, "/start"))
+    assert buttons[-1] == [telegram.BTN_STATUS, telegram.BTN_PING, telegram.BTN_STOP, telegram.BTN_HELP]
+    telegram.handle(_msg(42, telegram.BTN_PING))
+    assert bot[-1][1].startswith("✅ Бот работает") and "приходят в этот чат" in bot[-1][1]
+    telegram.handle(_msg(42, telegram.BTN_STATUS))
+    assert bot[-1][1].startswith("🔔 Оповещения в этот чат включены")
+    telegram.handle(_msg(42, telegram.BTN_STOP))  # после отключения на клавиатуре — «Подключить»
+    assert telegram.active_chats() == [] and buttons[-1] == [telegram.BTN_START, telegram.BTN_HELP]
+    telegram.handle(_msg(42, telegram.BTN_START))
+    assert [c["chat_id"] for c in telegram.active_chats()] == [42] and bot[-1][1].startswith("✅ Оповещения ВКД подключены")
+    telegram.set_commands()
+    assert bot_log["menu"] == ["start", "status", "ping", "stop", "help"]
+    # рассылка оповещений клавиатуру не меняет
+    telegram.deliver("тест")
+    assert buttons[-1] is None
 
 
 def test_blocked_chat_unsubscribed(bot):

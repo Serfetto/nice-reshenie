@@ -108,10 +108,13 @@ def active_chats() -> list[dict]:
 
 # ---------- отправка ----------
 
-def send(chat_id, text: str) -> str:
+def send(chat_id, text: str, keyboard: dict | None = None) -> str:
     """'ok' или текст ошибки. Бот заблокирован или чат удалён — чат отписывается."""
+    params = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
+    if keyboard is not None:
+        params["reply_markup"] = keyboard
     try:
-        call("sendMessage", chat_id=chat_id, text=text, disable_web_page_preview=True)
+        call("sendMessage", **params)
         return "ok"
     except TelegramError as e:
         if e.status == 403:
@@ -187,8 +190,21 @@ def watches_text() -> str:
     return "\n".join(lines)
 
 
-HELP = ("/status — что отслеживается сейчас\n"
-        "/stop — отключить оповещения\n"
+# Кнопки под полем ввода (нажатие отправляет текст кнопки) и меню команд у кнопки «Меню»
+BTN_STATUS, BTN_PING, BTN_STOP, BTN_START, BTN_HELP = (
+    "📋 Что отслеживается", "🔔 Проверить связь", "🔕 Отключить оповещения", "🔔 Подключить оповещения", "❓ Помощь")
+BUTTON_CMD = {BTN_STATUS: "/status", BTN_PING: "/ping", BTN_STOP: "/stop", BTN_START: "/start", BTN_HELP: "/help"}
+COMMANDS = [("start", "подключить оповещения"), ("status", "что отслеживается сейчас"),
+            ("ping", "проверить, что бот работает"), ("stop", "отключить оповещения"), ("help", "что умеет бот")]
+
+
+def keyboard(subscribed: bool) -> dict:
+    rows = ([[BTN_STATUS, BTN_PING], [BTN_STOP, BTN_HELP]] if subscribed else [[BTN_START], [BTN_HELP]])
+    return {"keyboard": [[{"text": t} for t in row] for row in rows], "resize_keyboard": True, "is_persistent": True}
+
+
+HELP = ("Кнопки внизу (или меню команд):\n"
+        f"{BTN_STATUS} — /status\n{BTN_PING} — /ping\n{BTN_STOP} — /stop\n\n"
         "Поставить выход на отслеживание — в веб-консоли: кнопка «Следить…» под ответом.")
 
 
@@ -199,24 +215,44 @@ def welcome_text() -> str:
             f"{watches_text()}\n\n{HELP}")
 
 
+def _subscribed(chat_id: int) -> bool:
+    return any(c["chat_id"] == chat_id for c in active_chats())
+
+
 def handle(upd: dict) -> None:
     msg = upd.get("message") or {}
     chat, text = msg.get("chat"), (msg.get("text") or "").strip()
     if not chat or not text:
         return
-    cmd = text.split()[0].split("@")[0].lower() if text.startswith("/") else ""
+    cmd = BUTTON_CMD.get(text) or (text.split()[0].split("@")[0].lower() if text.startswith("/") else "")
+    cid = chat["id"]
     if cmd == "/start":
         subscribe(chat)
-        send(chat["id"], welcome_text())
+        send(cid, welcome_text(), keyboard(True))
     elif cmd == "/stop":
-        unsubscribe(chat["id"])
-        send(chat["id"], "🔕 Оповещения отключены. Чтобы снова получать их — нажмите /start.")
+        unsubscribe(cid)
+        send(cid, f"🔕 Оповещения отключены. Чтобы снова получать их — кнопка «{BTN_START}».", keyboard(False))
     elif cmd == "/status":
-        on = any(c["chat_id"] == chat["id"] for c in active_chats())
-        send(chat["id"], ("🔔 Оповещения в этот чат включены." if on else "🔕 Оповещения в этот чат выключены — /start.")
-             + f"\n\n{watches_text()}")
+        on = _subscribed(cid)
+        send(cid, ("🔔 Оповещения в этот чат включены." if on else f"🔕 Оповещения в этот чат выключены — «{BTN_START}».")
+             + f"\n\n{watches_text()}", keyboard(on))
+    elif cmd == "/ping":
+        on = _subscribed(cid)
+        send(cid, f"✅ Бот работает, сейчас {msk(utcnow(), '%d.%m %H:%M')} МСК. "
+                  + ("Оповещения приходят в этот чат." if on else f"Оповещения в этот чат выключены — «{BTN_START}»."),
+             keyboard(on))
+    elif cmd == "/help":
+        send(cid, "Я присылаю оповещения о выходах в открытый космос.\n\n" + HELP, keyboard(_subscribed(cid)))
     else:
-        send(chat["id"], "Я присылаю оповещения о выходах в открытый космос.\n/start — подключить оповещения\n" + HELP)
+        send(cid, "Не понял команду. Нажмите кнопку внизу или «Меню».\n\n" + HELP, keyboard(_subscribed(cid)))
+
+
+def set_commands() -> None:
+    """Меню команд бота (кнопка «Меню» рядом с полем ввода)."""
+    try:
+        call("setMyCommands", commands=[{"command": c, "description": d} for c, d in COMMANDS])
+    except TelegramError as e:
+        log.warning("Telegram: меню команд не установлено: %s", e)
 
 
 # ---------- фоновый приём команд ----------
@@ -227,6 +263,7 @@ def _polling_enabled() -> bool:
 
 def _poll_loop() -> None:
     offset = None
+    set_commands()
     while True:
         try:
             # первый запрос — без ожидания: статус «принимает команды» виден сразу после старта
