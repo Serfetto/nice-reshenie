@@ -7,14 +7,14 @@
 </head>
 <body>
 <h1>Отчёт по окнам ВКД</h1>
-<div class="muted">Расчёт {{ run.run_id }} · создан {{ (run.created_at or "")[:16]|replace("T", " ") }} UTC · алгоритм {{ run.algorithm_version }}
+<div class="muted">Расчёт {{ run.run_id }} · создан {{ run.created_at|msk("%d.%m.%Y %H:%M") }} МСК · алгоритм {{ run.algorithm_version }}
   {% if res.config %}· настройки {% for k, v in res.config.sha256.items() %}{{ k }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}</div>
 
 <h2>Запрос</h2>
 <div class="kv">
   <b>Режим</b><span>{{ MODE_TEXT[res.mode] }}</span>
-  <b>Момент T (отсечка)</b><span>{{ res.as_of }}{% if res.mode == "review" %} (данные — весь архив на {{ res.data_cutoff }}){% endif %}</span>
-  <b>Период поиска начала</b><span>{{ res.search.earliest_start }} — {{ res.search.latest_start }}, шаг {{ res.search.step_min }} мин</span>
+  <b>Момент T (отсечка)</b><span>{{ res.as_of|msk("%d.%m.%Y %H:%M") }} МСК{% if res.mode == "review" %} (данные — весь архив на {{ res.data_cutoff|msk("%d.%m.%Y %H:%M") }} МСК){% endif %}</span>
+  <b>Период поиска начала</b><span>{{ res.search.earliest_start|msk("%d.%m.%Y %H:%M") }} — {{ res.search.latest_start|msk("%d.%m.%Y %H:%M") }} МСК, шаг {{ res.search.step_min }} мин</span>
   <b>Длительность</b><span>{{ res.search.duration_min }} мин</span>
   <b>Запас на задержку</b><span>{{ res.search.overrun_margin_min }} мин; время возвращения в шлюз {{ res.search.return_to_airlock_min }} мин</span>
   <b>Модель радиации</b><span>{{ res.radiation_model }}</span>
@@ -28,7 +28,7 @@
   {% if best %}<b> {{ best.id }}: {{ best.start }} – {{ best.end }}</b> · правило {{ rec.rule }}{% if rec.rule_text %} ({{ rec.rule_text }}){% endif %}{% endif %}
   · уверенность {{ rec.confidence }}
   <ul>{% for line in res.explanation.text %}<li>{{ line }}</li>{% endfor %}</ul>
-  {% if res.recheck_after %}<div class="small">Пересчитать: {% for x in res.recheck_after %}{{ x.time }} — {{ x.reason }}{% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
+  {% if res.recheck_after %}<div class="small">Пересчитать: {% for x in res.recheck_after %}{{ x.time|msk("%d.%m %H:%M") }} МСК — {{ x.reason }}{% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
 </div>
 
 <h2>Шкала классов по механизмам</h2>
@@ -36,12 +36,12 @@
 
 <h2>Все окна</h2>
 <table>
-  <tr><th>Окно</th><th>Начало – конец, UTC</th><th>Статус</th><th>Правило</th>
+  <tr><th>Окно</th><th>Начало – конец, МСК</th><th>Статус</th><th>Правило</th>
     {% for m in res.timeline %}<th class="num">{{ MECH_TEXT.get(m, m) }}: крит / нежел / нет, мин</th>{% endfor %}
     <th class="num">Поток за окно, pfu·мин</th><th>Запас</th><th>Уверенность</th></tr>
   {% for w in res.windows %}
   <tr><td>{{ w.id }}{% if w.id == rec.window %} ★{% endif %}{% if w.is_planned %} (план){% endif %}</td>
-    <td>{{ w.start[5:16]|replace("T", " ") }} – {{ w.end[11:16] }}</td>
+    <td>{{ w.start|msk("%d.%m %H:%M") }} – {{ w.end|msk }}</td>
     <td><span class="pill {{ w.status }}">{{ STATUS_TEXT.get(w.status, w.status) }}</span></td><td>{{ w.rule or "" }}</td>
     {% for m in res.timeline %}{% set mn = w.mechanisms[m].minutes %}
     <td class="num">{{ mn.critical|round|int }} / {{ mn.undesirable|round|int }} / {{ mn.no_data|round|int }}</td>{% endfor %}
@@ -53,9 +53,9 @@
 
 <h2>Интервалы с неблагоприятными условиями и пропусками</h2>
 <table>
-  <tr><th>Механизм</th><th>С – по, UTC</th><th>Класс</th><th>Причина</th><th>Тип данных</th><th>Уверенность и от чего зависит</th><th>Доказательства</th></tr>
+  <tr><th>Механизм</th><th>С – по, МСК</th><th>Класс</th><th>Причина</th><th>Тип данных</th><th>Уверенность и от чего зависит</th><th>Доказательства</th></tr>
   {% for m, ivs in res.timeline.items() %}{% for iv in ivs %}{% if iv.class != "acceptable" %}
-  <tr><td>{{ MECH_TEXT.get(m, m) }}</td><td>{{ iv.from[5:16]|replace("T", " ") }} – {{ iv.to[11:16] }}</td>
+  <tr><td>{{ MECH_TEXT.get(m, m) }}</td><td>{{ iv.from|msk("%d.%m %H:%M") }} – {{ iv.to|msk }}</td>
     <td class="lvl-{{ iv.class }}">{{ iv.class }}</td><td>{{ iv.reason_text }}</td><td>{{ KIND_TEXT.get(iv.kind, iv.kind) }}</td>
     <td>{{ iv.confidence }}{% if iv.confidence_reason %} — {{ iv.confidence_reason }}{% endif %}</td><td><code>{{ iv.evidence|join(", ") }}</code></td></tr>
   {% endif %}{% endfor %}{% endfor %}
@@ -64,23 +64,23 @@
 {% if res.events.mmod %}
 <h2>Сближения с отслеживаемыми объектами (≤ 50 км)</h2>
 <table>
-  <tr><th>Момент наибольшего сближения</th><th>Объект</th><th class="num">Дальность, км</th><th class="num">Радиально / вдоль / поперёк, км</th>
-    <th>Пролёт, км/с</th><th class="num">Энергия 1 г, кДж (тротил, г)</th><th>Зона контроля</th><th>Эпоха элементов</th></tr>
+  <tr><th>Момент наибольшего сближения, МСК</th><th>Объект</th><th class="num">Дальность, км</th><th class="num">Радиально / вдоль / поперёк, км</th>
+    <th>Пролёт, км/с</th><th class="num">Энергия 1 г, кДж (тротил, г)</th><th>Зона контроля</th><th>Эпоха элементов, МСК</th></tr>
   {% for e in res.events.mmod %}
-  <tr><td>{{ e.tca }}</td><td>{{ e.object_name }} ({{ e.norad_id }}, {{ e.object_type }})</td><td class="num">{{ e.min_range_km }}</td>
+  <tr><td>{{ e.tca|msk("%d.%m.%Y %H:%M") }}</td><td>{{ e.object_name }} ({{ e.norad_id }}, {{ e.object_type }})</td><td class="num">{{ e.min_range_km }}</td>
     <td class="num">{{ e.radial_km }} / {{ e.intrack_km }} / {{ e.crosstrack_km }}</td>
     <td>{{ e.pass_type or "" }} {{ e.rel_speed_km_s }}</td><td class="num">{{ e.energy_per_gram_kj }} ({{ e.tnt_equiv_per_gram_g }})</td>
     <td class="{{ 'lvl-critical' if e.in_control_box else '' }}">{{ "в зоне — критично" if e.in_control_box else "вне зоны" }}</td>
-    <td>{{ e.element_epoch }} (опубл. {{ e.element_created }})</td></tr>
+    <td>{{ e.element_epoch|msk("%d.%m.%Y %H:%M") }} (опубл. {{ e.element_created|msk("%d.%m.%Y %H:%M") }})</td></tr>
   {% endfor %}
 </table>
 {% endif %}
 
 <h2>Источники данных</h2>
 <table>
-  <tr><th>Источник</th><th>Состояние</th><th>Последние данные</th><th class="num">Использовано записей</th><th class="num">Отброшено после отсечки</th><th>Реконструкция</th><th>Сырые файлы (raw_id)</th></tr>
+  <tr><th>Источник</th><th>Состояние</th><th>Последние данные, МСК</th><th class="num">Использовано записей</th><th class="num">Отброшено после отсечки</th><th>Реконструкция</th><th>Сырые файлы (raw_id)</th></tr>
   {% for s in res.sources %}{% set m = res.manifest.get(s.source, {}) %}
-  <tr><td>{{ s.source }}</td><td>{{ s.state }}</td><td>{{ s.latest_data or "—" }}</td><td class="num">{{ m.get("items", "—") }}</td>
+  <tr><td>{{ s.source }}</td><td>{{ s.state }}</td><td>{{ s.latest_data|msk("%d.%m.%Y %H:%M") }}</td><td class="num">{{ m.get("items", "—") }}</td>
     <td class="num">{{ m.get("excluded_after_cutoff", "—") }}</td><td>{{ "да" if m.get("reconstructed") else "—" }}</td>
     <td><code>{{ (m.get("raw_ids") or [])[:12]|join(", ") }}{% if m.get("n_raw_files", 0) > 12 %} …(всего {{ m.n_raw_files }}){% endif %}</code></td></tr>
   {% endfor %}
@@ -89,7 +89,7 @@
 <h2>Орбита МКС</h2>
 <div class="kv">
   <b>Источник</b><span>{{ res.orbit.source }} (raw_id {{ res.orbit.raw_ref.raw_id }})</span>
-  <b>Эпоха / публикация</b><span>{{ res.orbit.epoch }} / {{ res.orbit.created }}</span>
+  <b>Эпоха / публикация</b><span>{{ res.orbit.epoch|msk("%d.%m.%Y %H:%M") }} / {{ res.orbit.created|msk("%d.%m.%Y %H:%M") }} МСК</span>
   <b>Давность на момент T</b><span>{{ res.orbit.age_at_cutoff_h }} ч</span>
   <b>Метод</b><span>{{ res.orbit.method }}</span>
   <b>TLE</b><span><code>{{ res.orbit.line1 }}<br>{{ res.orbit.line2 }}</code></span>

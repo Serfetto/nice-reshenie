@@ -36,6 +36,17 @@ def iso(dt: datetime | None) -> str | None:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# Время в текстах для людей (объяснения, оповещения, отчёты, консоль) — московское, без перехода на летнее.
+# Машиночитаемые поля (ISO в API, JSON, CSV) остаются в UTC.
+MSK_OFFSET = timedelta(hours=3)
+
+
+def msk(value: str | datetime | None, fmt: str = "%H:%M") -> str:
+    """UTC (ISO-строка или naive datetime) -> текст по московскому времени."""
+    dt = parse_iso(value)
+    return (dt + MSK_OFFSET).strftime(fmt) if dt is not None else "—"
+
+
 _SWPC_TIME = re.compile(r"(\d{4})\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2})(\d{2})\s*(?:UTC|UT)?")
 
 

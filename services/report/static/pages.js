@@ -131,7 +131,7 @@ function renderBootBox(boot) {
   const box = $("bootBox");
   box.innerHTML = "";
   if (!boot || boot.state === "idle") return;
-  const ranges = (boot.ranges || []).map((r) => `${dmy(`${r.from}T`)}–${dmy(`${r.to}T`)}`).join(", ");
+  const ranges = (boot.ranges || []).map((r) => `${dmy(r.from)}–${dmy(r.to)}`).join(", ");
   const errs = Object.entries(boot.sources || {}).filter(([, x]) => x.errors?.length);
   const text = boot.state === "running"
     ? `Догружается архив для расчётов на прошлые даты: ${boot.done_days ?? 0} из ${boot.total_days ?? "…"} дней-источников` +
@@ -160,8 +160,8 @@ function sourceCard(s) {
   const items = stt.items !== undefined
     ? `${intText(stt.items)} ${plural(stt.items, ITEM_FORMS[s.source] || ["значение", "значения", "значений"])}` : "ничего";
   const saved = `${items}` + (stt.raw_files ? ` · ${intText(stt.raw_files)} ${plural(stt.raw_files, ["файл", "файла", "файлов"])}, ${sizeText(stt.raw_bytes)}` : "");
-  const next = s.paused ? `заморожен${s.paused_until ? ` — снимется сам в ${dm(s.paused_until)} UTC` : ""}`
-    : s.next_run ? `${dm(s.next_run)} UTC · ${relTime(s.next_run)}` : "по расписанию не опрашивается";
+  const next = s.paused ? `заморожен${s.paused_until ? ` — снимется сам в ${dm(s.paused_until)} МСК` : ""}`
+    : s.next_run ? `${dm(s.next_run)} МСК · ${relTime(s.next_run)}` : "по расписанию не опрашивается";
   const urls = s.urls || [];
   return el("div", { class: `card src st-${st}` },
     el("div", { class: "src-h" },
@@ -171,12 +171,12 @@ function sourceCard(s) {
     s.what ? el("p", { class: "src-what" }, s.what) : null,
     s.used_for ? el("p", { class: "src-use" }, el("b", {}, "Зачем: "), s.used_for) : null,
     el("div", { class: "kv" },
-      el("b", {}, "Последние данные"), s.latest_data ? `${whenText(s.latest_data)} UTC · ${relTime(s.latest_data)}` : "нет",
+      el("b", {}, "Последние данные"), s.latest_data ? `${whenText(s.latest_data)} МСК · ${relTime(s.latest_data)}` : "нет",
       el("b", {}, s.event_driven ? "Лента проверена" : "Загружено"),
-      s.last_success ? `${dm(s.last_success)} UTC · ${relTime(s.last_success)}` : "ещё не загружался",
+      s.last_success ? `${dm(s.last_success)} МСК · ${relTime(s.last_success)}` : "ещё не загружался",
       el("b", {}, "Следующий опрос"), next,
       el("b", {}, "Расписание"), `раз в ${periodText(s.interval_s)}` +
-        (s.issue_times_utc ? ` · выпуски в ${s.issue_times_utc.join(", ")} UTC` : "") +
+        (s.issue_times_utc ? ` · выпуски в ${s.issue_times_utc.map((t) => hm(`2000-01-01T${t}:00Z`)).join(", ")} МСК` : "") +
         (s.max_age_s ? ` · старше ${periodText(s.max_age_s)} — устарели` : ""),
       el("b", {}, "Сохранено"), saved,
       el("b", {}, "Прошлые даты"), REPLAY_TEXT[s.replay] || "—"),
@@ -201,9 +201,9 @@ function sourceCard(s) {
 
 function refreshText(r) {
   if (!r.state) return "";
-  if (r.state === "running") return `запущено в ${hm(r.started_at)} UTC`;
+  if (r.state === "running") return `запущено в ${hm(r.started_at)} МСК`;
   if (r.state === "error") return `вручную в ${hm(r.finished_at)}: ошибка — ${(r.errors || [])[0] || ""}`.slice(0, 140);
-  return `вручную в ${hm(r.finished_at)} UTC: ${r.new_items ? `+${intText(r.new_items)}` : "новых данных нет"}`;
+  return `вручную в ${hm(r.finished_at)} МСК: ${r.new_items ? `+${intText(r.new_items)}` : "новых данных нет"}`;
 }
 
 async function refreshSource(s) {
@@ -317,11 +317,11 @@ function watchCard(w) {
   return el("div", { class: `card watch ${sel ? "sel" : ""}` },
     el("div", { class: "src-h" },
       el("div", {}, el("h3", {}, w.label || w.watch_id),
-        el("div", { class: "muted small" }, `Выход ${dm(w.window_start)}–${hm(w.window_end)} UTC`)),
+        el("div", { class: "muted small" }, `Выход ${dm(w.window_start)}–${hm(w.window_end)} МСК`)),
       el("span", { class: `chip ${w.status === "active" ? "running" : "never"}` }, WATCH_STATUS[w.status] || w.status)),
     el("div", { class: "flags" },
       el("span", { class: "flag" }, w.mode === "replay" ? "прокрутка прошлого дня" : "в реальном времени"),
-      w.mode === "replay" ? el("span", { class: "flag" }, `часы прокрутки: ${dm(w.sim_time)} UTC`)
+      w.mode === "replay" ? el("span", { class: "flag" }, `часы прокрутки: ${dm(w.sim_time)} МСК`)
         : el("span", { class: "flag" }, `проверено ${w.last_check_at ? relTime(w.last_check_at) : "—"}`)),
     snap ? el("ul", { class: "mini" }, ...Object.entries(snap.mechanisms).map(([m, st]) =>
       el("li", {}, el("i", { style: `background:${CLASS_COLOR[st.worst]}` }), `${MECH_TEXT[m] || m}: ${CLASS_TEXT[st.worst] || st.worst}`)))
@@ -341,13 +341,13 @@ function alertItem(a, labels) {
   const tg = a.delivered?.telegram;
   return el("div", { class: `alert ${a.severity} ${a.ack_at ? "acked" : ""}` },
     el("div", { class: "meta" }, el("b", { class: `sev ${a.severity}` }, SEV_TEXT[a.severity] || a.severity),
-      ` · ${labels[a.watch_id] || a.watch_id} · обстановка на ${dm(a.as_of)} UTC` +
+      ` · ${labels[a.watch_id] || a.watch_id} · обстановка на ${dm(a.as_of)} МСК` +
       (a.data_lag_s !== null && a.data_lag_s !== undefined ? ` · данные давностью ${ageText(a.data_lag_s)}` : "")),
     el("div", {}, a.message),
-    el("div", { class: "meta foot" }, `получено ${dm(a.created_at)} UTC` + (tg ? ` · Telegram: ${tg}` : ""),
+    el("div", { class: "meta foot" }, `получено ${dm(a.created_at)} МСК` + (tg ? ` · Telegram: ${tg}` : ""),
       !a.ack_at && a.severity !== "info"
         ? el("button", { type: "button", class: "btn", onclick: () => ackAlert(a) }, "Принято")
-        : a.ack_at ? el("span", {}, ` · принято ${dm(a.ack_at)} UTC`) : null));
+        : a.ack_at ? el("span", {}, ` · принято ${dm(a.ack_at)} МСК`) : null));
 }
 
 async function ackAlert(a) {
@@ -427,7 +427,7 @@ function savedRow(r) {
       el("button", { type: "button", class: "btn", onclick: () => { S.saved.edit = null; renderSaved(); } }, "Отмена"));
   } else {
     name = [r.label ? el("b", {}, r.label) : el("span", { class: "muted" }, "без названия"), el("br"),
-      el("span", { class: "muted small" }, `${dm(r.created_at)} UTC · ${r.run_id}`)];
+      el("span", { class: "muted small" }, `${dm(r.created_at)} МСК · ${r.run_id}`)];
   }
   let answer;
   if (r.status === "failed") answer = el("span", { class: "err small" }, (r.error || "ошибка расчёта").slice(0, 120));
@@ -435,13 +435,13 @@ function savedRow(r) {
   else if (!s) answer = "—";
   else if (s.best) {
     answer = [el("span", { class: `pill ${s.adverse ? "worse" : "preferred"}` }, s.adverse ? "наименее неблагоприятный" : "лучшее время"),
-      ` ${dm(s.best.start)}–${hm(s.best.end)} UTC`];
+      ` ${dm(s.best.start)}–${hm(s.best.end)} МСК`];
     if (s.planned && s.planned.id !== s.best.id) {
       answer.push(el("br"), el("span", { class: "muted small" }, `план ${hm(s.planned.start)} — ${STATUS_TEXT[s.planned.status] || s.planned.status}`));
     }
   } else if (s.rec_status === "insufficient_basis") answer = el("span", { class: "pill insufficient_basis" }, "нельзя оценить — не хватает данных");
   else answer = el("span", { class: "pill no_window" }, "подходящего времени нет");
-  const moment = q.mode === "now" ? `Сейчас · ${dm(s?.as_of || r.created_at)} UTC` : `${dmy(q.as_of)} ${hm(q.as_of)} UTC`;
+  const moment = q.mode === "now" ? `Сейчас · ${dm(s?.as_of || r.created_at)} МСК` : `${dmy(q.as_of)} ${hm(q.as_of)} МСК`;
   return el("tr", { class: S.run?.run_id === r.run_id ? "sel" : "" },
     el("td", { class: "wrap name" }, name),
     el("td", { "data-label": "Момент" }, el("span", { class: "flag" }, MODE_TEXT[q.mode] || q.mode), el("br"), moment),

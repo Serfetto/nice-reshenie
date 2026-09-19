@@ -5,6 +5,8 @@ import csv
 import io
 from datetime import datetime
 
+from common.timeutil import msk
+
 CLASS_COLORS = {"critical": "#d64545", "undesirable": "#e0a030", "acceptable": "#3a9d5d", "no_data": "#9aa0a8"}
 STATUS_TEXT = {"preferred": "предпочтительно", "equivalent": "равнозначно лучшему", "worse": "хуже",
                "not_recommended": "не рекомендуется", "requires_review": "требует проверки"}
@@ -36,7 +38,7 @@ def class_strip_svg(res: dict, width: int = 980) -> str:
         for iv in res["timeline"][name]:
             x0, x1 = x(iv["from"]), x(iv["to"])
             parts.append(f'<rect x="{x0:.1f}" y="{y}" width="{max(x1 - x0, 0.5):.1f}" height="20" '
-                         f'fill="{CLASS_COLORS.get(iv["class"], "#ccc")}"><title>{iv["from"][5:16]}–{iv["to"][11:16]} '
+                         f'fill="{CLASS_COLORS.get(iv["class"], "#ccc")}"><title>{msk(iv["from"], "%d.%m %H:%M")}–{msk(iv["to"])} МСК '
                          f'{iv["class"]}: {iv["reason_text"]} ({KIND_TEXT.get(iv["kind"], iv["kind"])})</title></rect>')
     base = 10 + 26 * len(rows)
     wins = {w["id"]: w for w in res["windows"]}
@@ -50,9 +52,9 @@ def class_strip_svg(res: dict, width: int = 980) -> str:
     xt = x(res["as_of"])
     if 110 <= xt <= width:
         parts.append(f'<line x1="{xt:.1f}" x2="{xt:.1f}" y1="2" y2="{base + 2}" stroke="#000" stroke-dasharray="4 3"/>')
-        parts.append(f'<text x="{xt + 3:.1f}" y="{base + 26}">T = {res["as_of"][5:16].replace("T", " ")}</text>')
-    parts.append(f'<text x="110" y="{h - 2}">{times[0][5:16].replace("T", " ")}</text>')
-    parts.append(f'<text x="{width - 90}" y="{h - 2}">{times[-1][5:16].replace("T", " ")} UTC</text>')
+        parts.append(f'<text x="{xt + 3:.1f}" y="{base + 26}">T = {msk(res["as_of"], "%d.%m %H:%M")}</text>')
+    parts.append(f'<text x="110" y="{h - 2}">{msk(times[0], "%d.%m %H:%M")}</text>')
+    parts.append(f'<text x="{width - 90}" y="{h - 2}">{msk(times[-1], "%d.%m %H:%M")} МСК</text>')
     parts.append("</svg>")
     return "".join(parts)
 
@@ -98,10 +100,10 @@ def status_line(res: dict) -> str:
     wins = {w["id"]: w for w in res["windows"]}
     w = wins.get(rec.get("window")) or wins.get(res.get("planned"))
     if w is None:
-        return f"ВКД · {REC_TEXT.get(rec['status'], rec['status'])} · T {res['as_of'][5:16]}"
+        return f"ВКД · {REC_TEXT.get(rec['status'], rec['status'])} · T {msk(res['as_of'], '%d.%m %H:%M')} МСК"
     marks = {"critical": "✖ крит", "undesirable": "▲ нежел", "no_data": "? нет данных", "acceptable": "● прием"}
     parts = [f"{'РАД' if m == 'radiation' else 'MMOD'} {marks[w['mechanisms'][m]['worst']]}" for m in w["mechanisms"]]
     ages = [s["age_s"] for s in res["sources"] if s.get("age_s") is not None and s["source"] == "goes_protons"]
     age = f" · данные {ages[0] // 60} мин" if ages and res["mode"] == "now" else ""
-    nxt = f" · пересчёт {res['recheck_after'][0]['time'][11:16]}" if res.get("recheck_after") else ""
-    return f"ВКД {w['start'][11:16]}–{w['end'][11:16]} · " + " · ".join(parts) + age + nxt
+    nxt = f" · пересчёт {msk(res['recheck_after'][0]['time'])}" if res.get("recheck_after") else ""
+    return f"ВКД {msk(w['start'])}–{msk(w['end'])} МСК · " + " · ".join(parts) + age + nxt

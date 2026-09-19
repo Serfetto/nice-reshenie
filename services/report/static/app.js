@@ -69,12 +69,13 @@ const FIELD_TEXT = {
 };
 const TIME_FIELDS = ["from", "to", "time", "issued_at", "valid_from", "valid_to", "begin_time", "end_time", "base_time",
   "observed_until", "tca", "element_epoch", "element_created", "latest_published", "cutoff", "epoch", "created"];
+// готовые примеры — время по Москве (в UTC на 3 ч меньше: 08.06 06:00 МСК = 03:00 UTC)
 const PRESETS = {
-  "0608": { review: false, asOf: "2024-06-08T03:00", planned: "2024-06-08T06:00" },
-  "0510": { review: false, asOf: "2024-05-10T21:00", planned: "" },
-  "0511": { review: true, asOf: "2024-05-11T00:00", planned: "" },
-  "0526": { review: false, asOf: "2024-05-26T00:00", planned: "2024-05-26T00:45" },
-  "1009": { review: false, asOf: "2024-10-09T06:00", planned: "" },
+  "0608": { review: false, asOf: "2024-06-08T06:00", planned: "2024-06-08T09:00" },
+  "0510": { review: false, asOf: "2024-05-11T00:00", planned: "" },
+  "0511": { review: true, asOf: "2024-05-11T03:00", planned: "" },
+  "0526": { review: false, asOf: "2024-05-26T03:00", planned: "2024-05-26T03:45" },
+  "1009": { review: false, asOf: "2024-10-09T09:00", planned: "" },
 };
 
 // ---------- утилиты ----------
@@ -92,10 +93,20 @@ function el(tag, attrs = {}, ...kids) {
 }
 function put(parent, ...kids) { for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) parent.append(k); }
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const hm = (iso) => (iso ? iso.slice(11, 16) : "—");
-const dm = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)} ${iso.slice(11, 16)}` : "—");
-const dmy = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : "—");
-const toIso = (local) => (local ? `${local}:00Z` : null);
+// Время в интерфейсе — московское (МСК = UTC+3, без перехода на летнее). В API и запросах — UTC:
+// всё, что пришло с сервера, переводится в МСК при показе, всё введённое — в UTC перед отправкой.
+const MSK_MS = 3 * 3600e3;
+function mskStr(iso) {  // "YYYY-MM-DDTHH:MM:SS" по Москве
+  const s = String(iso);
+  const t = Date.parse(/(Z|[+-]\d\d:?\d\d)$/.test(s) || s.length <= 10 ? s : `${s}Z`);  // без пояса — UTC
+  return Number.isNaN(t) ? s : new Date(t + MSK_MS).toISOString().slice(0, 19);
+}
+const hm = (iso) => (iso ? mskStr(iso).slice(11, 16) : "—");
+const dm = (iso) => { if (!iso) return "—"; const m = mskStr(iso); return `${m.slice(8, 10)}.${m.slice(5, 7)} ${m.slice(11, 16)}`; };
+const dmy = (iso) => { if (!iso) return "—"; const m = mskStr(iso); return `${m.slice(8, 10)}.${m.slice(5, 7)}.${m.slice(0, 4)}`; };
+// поле datetime-local (МСК) -> ISO UTC для запроса
+const toIso = (local) => (local ? `${new Date(Date.parse(`${local}:00+03:00`)).toISOString().slice(0, 19)}Z` : null);
+const nowMsk = () => hm(new Date().toISOString());
 const num = (v, d = 0) => (v === null || v === undefined ? "—" : Number(v).toFixed(d));
 const ageText = (s) => (s === null || s === undefined ? "—" : s < 120 ? `${s} с` : s < 7200 ? `${Math.round(s / 60)} мин` :
   s < 172800 ? `${(s / 3600).toFixed(1)} ч` : `${Math.round(s / 86400)} сут`);
@@ -124,6 +135,7 @@ function setMode(mode) {
   S.mode = mode;
   document.querySelectorAll("#modeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
   $("historyBox").classList.toggle("hidden", mode === "now");
+  updateTzHints();
 }
 
 function buildOverrides() {
@@ -139,9 +151,34 @@ function buildOverrides() {
   }
 }
 
+// поля времени — по Москве; если часы пользователя в другом поясе, под полем — то же время по его часам
+const TZ_FIELDS = ["asOf", "planned", "earliest", "latest"];
+function tzOffsetText() {
+  const m = -new Date().getTimezoneOffset(), a = Math.abs(m);
+  return `UTC${m >= 0 ? "+" : "−"}${Math.floor(a / 60)}${a % 60 ? `:${String(a % 60).padStart(2, "0")}` : ""}`;
+}
+const isFuture = (local) => Boolean(local) && Date.parse(toIso(local)) > Date.now() + 60e3;
+
+function updateTzHints() {
+  const other = new Date().getTimezoneOffset() !== -180;
+  for (const id of TZ_FIELDS) {
+    const hint = document.querySelector(`.tz[data-for="${id}"]`), v = $(id).value;
+    if (!hint) continue;
+    const future = id === "asOf" && S.mode !== "now" && isFuture(v);
+    const local = v ? new Date(toIso(v)).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+    hint.textContent = future ? `Этот момент ещё не наступил: сейчас ${nowMsk()} МСК.`
+      : v && other ? `по вашим часам: ${local} (${tzOffsetText()})` : "";
+    hint.classList.toggle("warn", future);
+  }
+}
+
 function buildRequest() {
   const dur = Number($("durH").value) * 60 + Number($("durM").value);
   const mode = S.mode === "now" ? "now" : ($("reviewChk").checked ? "review" : "replay");
+  if (mode !== "now" && isFuture($("asOf").value)) {
+    throw new Error(`Момент ${dm(toIso($("asOf").value))} МСК ещё не наступил (сейчас ${nowMsk()} МСК). ` +
+      "Для расчёта на текущий момент выберите «Сейчас», а время выхода укажите в шаге 3.");
+  }
   const req = {
     mode, duration_min: dur, radiation_model: $("model").value, step_min: Number($("stepMin").value),
     eva: { return_to_airlock_min: Number($("retMin").value), overrun_margin_min: Number($("marginMin").value) },
@@ -232,7 +269,7 @@ function renderRunMeta() {
   const box = $("runMeta");
   box.innerHTML = "";
   put(box,
-    el("span", { class: "badge" }, r.mode === "now" ? `Сейчас · ${dm(r.as_of)} UTC` : `${MODE_TEXT[r.mode]} · ${dmy(r.as_of)} ${hm(r.as_of)} UTC`),
+    el("span", { class: "badge" }, r.mode === "now" ? `Сейчас · ${dm(r.as_of)} МСК` : `${MODE_TEXT[r.mode]} · ${dmy(r.as_of)} ${hm(r.as_of)} МСК`),
     run.label ? el("b", {}, run.label) : null,
     el("span", { class: "muted" }, `расчёт ${run.run_id} сохранён`),
     el("a", { href: "#saved" }, "в сохранениях"),
@@ -300,9 +337,9 @@ function renderAnswer() {
     // если и лучший вариант с неблагоприятными условиями (не только фоновыми) — не выдавать его за хороший
     adverse = Object.values(best.mechanisms).some((st) => st.worst === "undesirable" &&
       Object.keys(st.reasons || {}).some((c) => !BACKGROUND.includes(c)));
-    big = adverse ? `Хороших вариантов нет. Наименее неблагоприятный — начало в ${hm(best.start)} UTC`
-      : `Лучше всего начать в ${hm(best.start)} UTC`;
-    sub = `${dmy(best.start)} · выход до ${hm(best.end)} UTC · ${Math.floor(dur / 60)} ч ${dur % 60} мин`;
+    big = adverse ? `Хороших вариантов нет. Наименее неблагоприятный — начало в ${hm(best.start)} МСК`
+      : `Лучше всего начать в ${hm(best.start)} МСК`;
+    sub = `${dmy(best.start)} · выход до ${hm(best.end)} МСК · ${Math.floor(dur / 60)} ч ${dur % 60} мин`;
     for (const [m, st] of Object.entries(best.mechanisms)) {
       reasons.append(el("li", {}, el("i", { style: `background:${CLASS_COLOR[st.worst]}` }),
         `${MECH_TEXT[m]}: ${mechSentence(m, st, dur)}`));
@@ -343,7 +380,7 @@ function renderAnswer() {
   const o = r.orbit || {};
   reasons.append(el("li", { class: "muted" }, el("i", { style: "background:#4a9eff" }),
     `Орбита МКС: ${o.source === "iss_spacetrack" ? "Space-Track" : o.source === "iss_celestrak" ? "CelesTrak" : o.source} · ` +
-    `элементы на ${dm(o.epoch)} UTC, опубликованы ${dm(o.created)} UTC · ` +
+    `элементы на ${dm(o.epoch)} МСК, опубликованы ${dm(o.created)} МСК · ` +
     (o.age_at_cutoff_h >= 0 ? `давность ${num(o.age_at_cutoff_h, 1)} ч` : `эпоха позже выбранного момента на ${num(-o.age_at_cutoff_h, 1)} ч (разбор по архиву)`)));
   const conf = rec.confidence;
   const next = (r.recheck_after || [])[0];
@@ -353,7 +390,7 @@ function renderAnswer() {
   const note = conf === "low"
     ? el("div", { class: "note" }, "Прогноз на это время ненадёжен: " +
       (lowWhy.length ? lowWhy.join(". ") : "часть окна оценена только по прогнозу или допущениям") + ". " +
-      (next ? `Пересчитайте после ${dm(next.time)} UTC.` : "Пересчитайте ближе к началу."))
+      (next ? `Пересчитайте после ${dm(next.time)} МСК.` : "Пересчитайте ближе к началу."))
     : null;
   const watchText = r.mode === "now" ? "Следить и предупредить, если станет хуже" : "Показать предупреждения, как в тот день";
   put(box,
@@ -445,7 +482,7 @@ function renderVariant(w) {
     `${e.in_control_box ? ` — опасно близко (1 г на такой скорости ≈ ${num(e.tnt_equiv_per_gram_g)} г тротила)` : ""}`)));
   const watchText = r.mode === "now" ? "Следить за этим вариантом" : "Показать предупреждения для этого варианта";
   put(box,
-    el("div", { class: "vh" }, el("b", {}, `Начало ${hm(w.start)} → конец ${hm(w.end)} UTC`),
+    el("div", { class: "vh" }, el("b", {}, `Начало ${hm(w.start)} → конец ${hm(w.end)} МСК`),
       el("span", { class: `pill ${w.status}` }, isBest ? "лучший вариант" : STATUS_TEXT[w.status]),
       w.is_planned ? el("span", { class: "pill worse" }, "ваш план") : null),
     ul,
@@ -464,7 +501,7 @@ function whyWindow(id) {
   for (const list of Object.values(S.res.timeline)) {
     list.forEach((iv) => { if (iv.to > w.start && iv.from < w.end) iv.evidence.forEach((k) => keys.add(k)); });
   }
-  openEvidence([...keys], `Откуда данные: ${hm(w.start)}–${hm(w.end)} UTC`);
+  openEvidence([...keys], `Откуда данные: ${hm(w.start)}–${hm(w.end)} МСК`);
 }
 
 // ---------- подробности ----------
@@ -491,13 +528,13 @@ function renderRec() {
   box.innerHTML = "";
   put(box, el("h2", {}, "Полное объяснение"),
     el("div", { class: "flags" },
-      el("span", { class: "flag" }, `варианты: начало с ${dm(r.search.earliest_start)} по ${dm(r.search.latest_start)} UTC, шаг ${r.search.step_min} мин`),
+      el("span", { class: "flag" }, `варианты: начало с ${dm(r.search.earliest_start)} по ${dm(r.search.latest_start)} МСК, шаг ${r.search.step_min} мин`),
       r.reconstruction ? el("span", { class: "flag warn" }, "использованы восстановленные архивные данные") : null,
       ...r.sources.filter((s) => !["ok", "frozen"].includes(s.state) && !(s.state === "no_data" && ["kp_forecast", "iss_celestrak"].includes(s.source)))
         .map((s) => el("span", { class: "flag warn", title: s.last_error || "" }, `${s.source}: ${s.state}`))),
     el("ul", {}, ...r.explanation.text.map((t) => el("li", {}, t))),
     r.recheck_after?.length ? el("div", { class: "muted" }, "Когда пересчитать: " +
-      r.recheck_after.slice(0, 3).map((x) => `${dm(x.time)} UTC — ${x.reason}`).join("; ")) : null,
+      r.recheck_after.slice(0, 3).map((x) => `${dm(x.time)} МСК — ${x.reason}`).join("; ")) : null,
     el("h3", {}, "Ограничения оценки"),
     el("ul", { class: "muted" }, ...(r.limitations || []).map((t) => el("li", {}, t))),
     el("div", { class: "muted" }, `Версия алгоритма ${r.algorithm_version}; настройки ${Object.entries(r.config?.sha256 || {}).map(([k, v]) => `${k} ${v}`).join(", ")}`));
@@ -506,7 +543,7 @@ function renderRec() {
 function seriesArr(key) { return (S.res.series[key] || []).map((v) => (v === null ? null : v)); }
 
 function renderTimeline() {
-  const r = S.res, s = r.series, t = s.times;
+  const r = S.res, s = r.series, t = s.times, tx = t.map(mskStr);  // t — UTC для сравнений, tx — МСК для оси
   const bandRows = Object.keys(r.timeline);
   const bandAxes = { [bandRows[0]]: "y", [bandRows[1]]: "y2" };
   const shapes = [], traces = [];
@@ -514,26 +551,26 @@ function renderTimeline() {
     const yref = bandAxes[m];
     const xs = [], ys = [], texts = [], cd = [];
     r.timeline[m].forEach((iv, i) => {
-      shapes.push({ type: "rect", xref: "x", yref, x0: iv.from, x1: iv.to, y0: 0, y1: 1, line: { width: 0 },
+      shapes.push({ type: "rect", xref: "x", yref, x0: mskStr(iv.from), x1: mskStr(iv.to), y0: 0, y1: 1, line: { width: 0 },
         fillcolor: CLASS_COLOR[iv.class], opacity: iv.kind === "observation" || iv.kind === "none" ? 0.95 : 0.7 });
-      xs.push(new Date((Date.parse(iv.from) + Date.parse(iv.to)) / 2).toISOString()); ys.push(0.5); cd.push([m, i]);
+      xs.push(mskStr(new Date((Date.parse(iv.from) + Date.parse(iv.to)) / 2).toISOString())); ys.push(0.5); cd.push([m, i]);
       texts.push(`<b>${MECH_TEXT[m]}: ${CLASS_TEXT[iv.class]}</b><br>${esc(reasonText(iv.reason, iv.reason_text))}<br>` +
         `${KIND_TEXT[iv.kind] || iv.kind} · надёжность ${CONF_TEXT[iv.confidence] || iv.confidence}` +
-        (iv.confidence_reason ? `<br><i>${esc(iv.confidence_reason)}</i>` : "") + `<br>${dm(iv.from)}–${hm(iv.to)} UTC`);
+        (iv.confidence_reason ? `<br><i>${esc(iv.confidence_reason)}</i>` : "") + `<br>${dm(iv.from)}–${hm(iv.to)} МСК`);
     });
     traces.push({ x: xs, y: ys, yaxis: yref, mode: "markers", marker: { size: 14, opacity: 0 }, hoverinfo: "text",
       text: texts, customdata: cd, showlegend: false });
   });
   const line = (key, name, color, dash, yaxis = "y3", shape = "linear") => ({
-    x: t, y: seriesArr(key), name, yaxis, mode: "lines", connectgaps: false,
+    x: tx, y: seriesArr(key), name, yaxis, mode: "lines", connectgaps: false,
     line: { color, width: 1.5, dash, shape }, hovertemplate: `${name}: %{y:.3g}<extra></extra>` });
   // измерено (до T) — сплошной линией, прогноз (после T) — пунктиром
   const split = (key, name, color) => {
     const y = seriesArr(key);
     return [
-      { x: t, y: y.map((v, i) => (t[i] <= r.as_of ? v : null)), name, legendgroup: key, yaxis: "y3", mode: "lines",
+      { x: tx, y: y.map((v, i) => (t[i] <= r.as_of ? v : null)), name, legendgroup: key, yaxis: "y3", mode: "lines",
         line: { color, width: 1.5 }, hovertemplate: `${name}: %{y:.3g}<extra>измерено</extra>` },
-      { x: t, y: y.map((v, i) => (t[i] >= r.as_of ? v : null)), name: `${name} — прогноз`, legendgroup: key, showlegend: false,
+      { x: tx, y: y.map((v, i) => (t[i] >= r.as_of ? v : null)), name: `${name} — прогноз`, legendgroup: key, showlegend: false,
         yaxis: "y3", mode: "lines", line: { color, width: 1.5, dash: "dash" }, hovertemplate: `${name}: %{y:.3g}<extra>прогноз</extra>` },
     ];
   };
@@ -542,10 +579,10 @@ function renderTimeline() {
     traces.push(...split("radiation.p_ge100", "частицы ≥100 МэВ у спутника GOES", "#a67cf0"));
     traces.push(line("radiation.j_iss", "долетает до станции (оценка)", "#f07c4a", "dot"));
     traces.push(line("radiation.kp", "магнитная буря, Kp", "#cfd5dc", "solid", "y4", "hv"));
-    traces.push({ x: t, y: seriesArr("radiation.saa").map((v) => (v ? 8.5 : null)), yaxis: "y4", mode: "lines",
+    traces.push({ x: tx, y: seriesArr("radiation.saa").map((v) => (v ? 8.5 : null)), yaxis: "y4", mode: "lines",
       name: "пролёт ЮАА", line: { color: "#e0a030", width: 6 }, hoverinfo: "skip" });
   }
-  shapes.push({ type: "line", xref: "x", yref: "paper", x0: r.as_of, x1: r.as_of, y0: 0, y1: 1,
+  shapes.push({ type: "line", xref: "x", yref: "paper", x0: mskStr(r.as_of), x1: mskStr(r.as_of), y0: 0, y1: 1,
     line: { color: "#fff", width: 1, dash: "dash" } });
   // где заканчивается количественный прогноз потока — дальше только суточная вероятность
   const extraNotes = [];
@@ -560,9 +597,9 @@ function renderTimeline() {
       : from < r.as_of ? "нет свежих измерений — прогноз не строится"
         : pmax !== null ? `дальше 6 ч по минутам не предсказать — есть только суточная вероятность события: до ${num(pmax)}%`
           : "дальше прогноза нет";
-    shapes.push({ type: "rect", xref: "x", yref: "paper", x0: from, x1: t[t.length - 1], y0: 0.34, y1: 0.74,
+    shapes.push({ type: "rect", xref: "x", yref: "paper", x0: mskStr(from), x1: tx[tx.length - 1], y0: 0.34, y1: 0.74,
       line: { width: 0 }, fillcolor: "rgba(138,146,156,0.13)" });
-    extraNotes.push({ xref: "x", yref: "paper", x: from, y: 0.72, xanchor: "left", yanchor: "top", xshift: 6, showarrow: false,
+    extraNotes.push({ xref: "x", yref: "paper", x: mskStr(from), y: 0.72, xanchor: "left", yanchor: "top", xshift: 6, showarrow: false,
       text: text.replace(" — ", "<br>"), align: "left", font: { color: "#cfd5dc", size: 11 },
       bgcolor: "rgba(22,29,37,0.8)" });
   }
@@ -571,15 +608,15 @@ function renderTimeline() {
   const aIdx = kpA.findIndex((v) => v === 1);
   if (aIdx >= 0) {
     const bIdx = kpA.length - 1 - [...kpA].reverse().findIndex((v) => v === 1);
-    shapes.push({ type: "rect", xref: "x", yref: "paper", x0: t[aIdx], x1: t[bIdx], y0: 0, y1: 0.26,
+    shapes.push({ type: "rect", xref: "x", yref: "paper", x0: tx[aIdx], x1: tx[bIdx], y0: 0, y1: 0.26,
       line: { width: 0 }, fillcolor: "rgba(138,146,156,0.13)" });
-    extraNotes.push({ xref: "x", yref: "paper", x: t[aIdx], y: 0.25, xanchor: "left", yanchor: "top", xshift: 6, showarrow: false,
+    extraNotes.push({ xref: "x", yref: "paper", x: tx[aIdx], y: 0.25, xanchor: "left", yanchor: "top", xshift: 6, showarrow: false,
       text: "Kp неизвестен (нет прогноза) — принят 5 с запасом", font: { color: "#cfd5dc", size: 11 }, bgcolor: "rgba(22,29,37,0.8)" });
   }
   const rec = S.byId[r.recommendation.window], plan = S.byId[r.planned];
-  if (rec) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: rec.start, x1: rec.end, y0: 0.77, y1: 1,
+  if (rec) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: mskStr(rec.start), x1: mskStr(rec.end), y0: 0.77, y1: 1,
     line: { color: "#58d68d", width: 2 }, fillcolor: "rgba(0,0,0,0)" });
-  if (plan && plan !== rec) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: plan.start, x1: plan.end,
+  if (plan && plan !== rec) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: mskStr(plan.start), x1: mskStr(plan.end),
     y0: 0.77, y1: 1, line: { color: "#cfd5dc", width: 1, dash: "dot" }, fillcolor: "rgba(0,0,0,0)" });
   S.baseShapes = shapes;
   const layout = {
@@ -595,7 +632,7 @@ function renderTimeline() {
     annotations: [
       ...bandRows.map((m, i) => ({ xref: "paper", yref: "paper", x: 0, y: i === 0 ? 0.94 : 0.84, xanchor: "right",
         text: MECH_TEXT[m], showarrow: false, xshift: -6 })),
-      { xref: "x", yref: "paper", x: r.as_of, y: 0.77, text: "T", showarrow: false, xanchor: "left", xshift: 3, font: { color: "#fff" } },
+      { xref: "x", yref: "paper", x: mskStr(r.as_of), y: 0.77, text: "T", showarrow: false, xanchor: "left", xshift: 3, font: { color: "#fff" } },
       ...extraNotes,
     ],
   };
@@ -615,13 +652,13 @@ function renderTimeline() {
 function selShape() {
   const w = S.byId?.[S.sel];
   if (!w) return [];
-  return [{ type: "rect", xref: "x", yref: "paper", x0: w.start, x1: w.end, y0: 0, y1: 1, line: { width: 0 },
+  return [{ type: "rect", xref: "x", yref: "paper", x0: mskStr(w.start), x1: mskStr(w.end), y0: 0, y1: 1, line: { width: 0 },
     fillcolor: "rgba(74,158,255,0.10)" }];
 }
 
 function renderWindows() {
   const r = S.res, mechs = Object.keys(r.timeline), tbl = $("winTable"), hide = $("hideBad").checked;
-  const head = el("tr", {}, el("th", {}, "Начало – конец, UTC"), el("th", {}, "Оценка"),
+  const head = el("tr", {}, el("th", {}, "Начало – конец, МСК"), el("th", {}, "Оценка"),
     ...mechs.map((m) => el("th", { class: "num" }, `${MECH_TEXT[m]}: стоп / нежел. / нет данных, мин`)),
     mechs.includes("radiation") ? el("th", { class: "num", title: "Сумма оценки потока, долетающего до станции, за окно" }, "Частиц за окно, pfu·мин") : null,
     el("th", { class: "num" }, "Если затянется"), el("th", {}, "Надёжность"), el("th", {}, "№"));
@@ -706,7 +743,7 @@ function openEvidence(keys, title, iv) {
     body.append(el("div", { class: "ev" },
       el("div", { class: "h" }, el("span", { class: `kind ${iv.kind}` }, KIND_TEXT[iv.kind] || iv.kind), el("span", { class: "layer" }, "итог для выхода")),
       el("div", { class: "kv" }, el("b", {}, "Оценка"), CLASS_TEXT[iv.class], el("b", {}, "Почему"), reasonText(iv.reason, iv.reason_text),
-        el("b", {}, "Когда"), `${dm(iv.from)} – ${dm(iv.to)} UTC`, el("b", {}, "Надёжность"), CONF_TEXT[iv.confidence] || iv.confidence,
+        el("b", {}, "Когда"), `${dm(iv.from)} – ${dm(iv.to)} МСК`, el("b", {}, "Надёжность"), CONF_TEXT[iv.confidence] || iv.confidence,
         iv.confidence_reason ? el("b", {}, "От чего зависит") : null, iv.confidence_reason || null)));
   }
   const ev = S.res.evidence;
@@ -716,7 +753,7 @@ function openEvidence(keys, title, iv) {
     const kv = el("div", { class: "kv" });
     for (const [f, v] of Object.entries(e)) {
       if (["layer", "kind", "raw_ref"].includes(f) || v === null) continue;
-      const val = TIME_FIELDS.includes(f) && typeof v === "string" && v.endsWith("Z") ? `${dm(v)} UTC` : v;
+      const val = TIME_FIELDS.includes(f) && typeof v === "string" && v.endsWith("Z") ? `${dm(v)} МСК` : v;
       kv.append(el("b", { title: f }, FIELD_TEXT[f] || f), el("span", { html: fmtVal(val) }));
     }
     const links = el("div", { class: "flags" });
@@ -757,15 +794,15 @@ function renderSources() {
   });
   put(box, el("h3", {}, "Данные, на которых построен ответ"),
     el("p", { class: "hint" }, r.mode === "replay"
-      ? `Учтены только данные, опубликованные до ${dm(r.as_of)} UTC; «отброшено» — вышедшие позже (в расчёт не попали).`
+      ? `Учтены только данные, опубликованные до ${dm(r.as_of)} МСК; «отброшено» — вышедшие позже (в расчёт не попали).`
       : "Давность — сколько прошло с последних данных."),
     el("div", { class: "tablewrap" }, el("table", { class: "tbl" },
       el("thead", {}, el("tr", {}, ...["Источник", "Состояние", "Последние данные", "Давность", "Использовано",
         "Отброшено (вышли позже)", "Восстановлено из архива", "Отключён/заморожен"].map((h) => el("th", {}, h)))),
       el("tbody", {}, ...rows))),
     el("h3", {}, "Орбита МКС"),
-    el("div", { class: "kv" }, el("b", {}, "Источник"), r.orbit.source, el("b", {}, "Эпоха элементов"), `${dm(r.orbit.epoch)} UTC`,
-      el("b", {}, "Опубликовано"), `${dm(r.orbit.created)} UTC`, el("b", {}, "Давность"),
+    el("div", { class: "kv" }, el("b", {}, "Источник"), r.orbit.source, el("b", {}, "Эпоха элементов"), `${dm(r.orbit.epoch)} МСК`,
+      el("b", {}, "Опубликовано"), `${dm(r.orbit.created)} МСК`, el("b", {}, "Давность"),
       r.orbit.age_at_cutoff_h >= 0 ? `${num(r.orbit.age_at_cutoff_h, 1)} ч` : `эпоха позже выбранного момента на ${num(-r.orbit.age_at_cutoff_h, 1)} ч (разбор по архиву)`,
       el("b", {}, "TLE"), el("code", {}, `${r.orbit.line1}\n${r.orbit.line2}`)),
     el("h3", {}, "Сбор данных прямо сейчас"),
@@ -784,7 +821,7 @@ function renderChips(list) {
   box.append(el("a", { href: "#sources", class: `chip ${bad.length ? "stale" : "ok"}`, title: bad.map((s) => `${s.title || s.source}: ${STATE_TEXT[s.status] || s.status}`).join("\n") },
     bad.length ? `данные: ${bad.length} из ${list.length} с замечаниями` : `данные: все ${list.length} источников в порядке`));
   const paused = list.filter((s) => s.paused).map((s) => `${OVERRIDE_SOURCES[s.source] || s.title || s.source}` +
-    (s.paused_until ? ` до ${hm(s.paused_until)} UTC` : ""));
+    (s.paused_until ? ` до ${hm(s.paused_until)} МСК` : ""));
   if (paused.length) box.append(el("a", { href: "#sources", class: "chip paused", title: "Обновление заморожено для всех пользователей. " +
     "Возобновить — раздел «Источники». Проверить сбой только для своего расчёта — «Дополнительно» в форме." },
   `заморожено: ${paused.join(", ")}`));
@@ -987,7 +1024,7 @@ function openHelp() {
       контроля станции; мелкие частицы, которых не видно поштучно, учитываются статистически по прогнозу метеорных потоков NASA.</li>
     <li><b>Почему сближение — стоп-фактор</b> — на орбите относительная скорость доходит до 15 км/с: 1 г вещества несёт около
       100 кДж, как 25 г тротила. Поэтому размер объекта и вероятность попадания не взвешиваются.</li>
-    <li><b>UTC</b> — всемирное время (Москва = UTC + 3).</li>
+    <li><b>МСК</b> — всё время в консоли московское. В API, JSON и CSV — UTC (на 3 ч меньше).</li>
   </ul>
   <p class="muted">Это оценка внешних условий, а не доза облучения. Решение о выходе принимают специалисты.</p>
   </div>`;
@@ -1036,13 +1073,14 @@ function route() {
 function init() {
   setMode("history");
   buildOverrides();
-  $("asOf").value = "2024-06-08T03:00";
+  $("asOf").value = "2024-06-08T06:00";  // МСК
   document.querySelectorAll("#modeSeg button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
   document.querySelectorAll("#examples button").forEach((b) => b.addEventListener("click", () => {
     const p = PRESETS[b.dataset.preset];
     setMode("history");
     $("asOf").value = p.asOf; $("reviewChk").checked = p.review; $("planned").value = p.planned;
     $("earliest").value = ""; $("latest").value = ""; $("durH").value = 6; $("durM").value = 30;
+    updateTzHints();
     submitRun(buildRequest());
   }));
   $("form").addEventListener("submit", (e) => {
@@ -1065,7 +1103,8 @@ function init() {
   window.addEventListener("hashchange", route);
   route();
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
-  const tick = () => { $("clock").textContent = new Date().toISOString().slice(11, 16) + " UTC"; };
+  TZ_FIELDS.forEach((id) => $(id).addEventListener("input", updateTzHints));
+  const tick = () => { $("clock").textContent = `${nowMsk()} МСК`; updateTzHints(); };
   tick(); setInterval(tick, 10000);
   refreshChips();
   setInterval(refreshChips, 30000);

@@ -21,7 +21,7 @@ from sqlalchemy import select, update
 
 from common import config
 from common.db import alerts, get_engine, watches
-from common.timeutil import iso, parse_iso, utcnow
+from common.timeutil import iso, msk, parse_iso, utcnow
 from services.assessment.core.explain import conjunction_text
 from services.assessment.core.timeline import REASONS
 from services.assessment.runner import RunError, execute, jsonable
@@ -119,8 +119,8 @@ def _compare(w, prev: dict | None, cur: dict) -> list[dict]:
     if prev is None:
         parts = [f"{MECH_TEXT.get(n, n)}: {LEVEL_TEXT[m['worst']]}" for n, m in cur["mechanisms"].items()]
         out.append({"severity": "info", "kind": "watch_started", "mechanism": None,
-                    "message": f"Отслеживание начато. Окно {cur['window']['start'][11:16]}–"
-                               f"{cur['window']['end'][11:16]} UTC: " + "; ".join(parts) + "."})
+                    "message": f"Отслеживание начато. Окно {msk(cur['window']['start'])}–"
+                               f"{msk(cur['window']['end'])} МСК: " + "; ".join(parts) + "."})
         prev = {"mechanisms": {n: {"worst": "acceptable", "first_critical": None} for n in cur["mechanisms"]}}
         # сразу сообщаем о неблагоприятном начальном состоянии
     for name, m in cur["mechanisms"].items():
@@ -132,7 +132,7 @@ def _compare(w, prev: dict | None, cur: dict) -> list[dict]:
                 fc = m["first_critical"] or {}
                 t_crit = parse_iso(fc.get("from")) if fc.get("from") else None
                 lead = (t_crit - now).total_seconds() / 60 if t_crit else None
-                msg = (f"{title}: КРИТИЧНО в окне с {fc.get('from', '')[11:16]} UTC — {fc.get('reason', '')} "
+                msg = (f"{title}: КРИТИЧНО в окне с {msk(fc.get('from'))} МСК —{fc.get('reason', '')} "
                        f"({fc.get('kind', '')}, уверенность {fc.get('confidence', '')}).")
                 if fc.get("detail"):
                     msg += f" Подробно: {fc['detail']}."
@@ -187,7 +187,7 @@ def _deliver(w, items: list[dict], cur: dict) -> None:
         delivered = {"web": "ok"}
         if "telegram" in (w.channels or []) and it["severity"] != "info":
             prefix = "[ПРОИГРЫВАНИЕ] " if w.mode == "replay" else ""
-            delivered["telegram"] = _send_telegram(f"{prefix}ВКД {w.label or w.id} · {as_of:%d.%m %H:%M} UTC\n"
+            delivered["telegram"] = _send_telegram(f"{prefix}ВКД {w.label or w.id} · {msk(as_of, '%d.%m %H:%M')} МСК\n"
                                                    f"{it['message']}")
         rows.append({"watch_id": w.id, "created_at": now, "as_of": as_of, "severity": it["severity"],
                      "kind": it["kind"], "mechanism": it.get("mechanism"), "message": it["message"],

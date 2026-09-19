@@ -7,26 +7,26 @@
 </head>
 <body>
 <h1>Краткая сводка по окнам ВКД</h1>
-<div class="muted">{{ MODE_TEXT[res.mode] }} · T = {{ res.as_of[:16]|replace("T", " ") }} UTC · длительность {{ res.search.duration_min }} мин ·
+<div class="muted">{{ MODE_TEXT[res.mode] }} · T = {{ res.as_of|msk("%d.%m.%Y %H:%M") }} МСК · длительность {{ res.search.duration_min }} мин ·
   расчёт {{ run.run_id }} · алгоритм {{ run.algorithm_version }}</div>
 
 <div class="box">
   <div><span class="pill {{ rec.status }}">{{ REC_TEXT.get(rec.status, rec.status) }}</span>
-  {% if best %}<b style="font-size:16px"> {{ best.id }}: {{ best.start[5:16]|replace("T", " ") }} – {{ best.end[11:16] }} UTC</b>{% endif %}
+  {% if best %}<b style="font-size:16px"> {{ best.id }}: {{ best.start|msk("%d.%m %H:%M") }} – {{ best.end|msk }} МСК</b>{% endif %}
   · уверенность: {{ {"high": "высокая", "medium": "средняя", "low": "низкая", "none": "нет"}.get(rec.confidence, rec.confidence) }}
   {% if rec.tentative %} · <b>предварительно</b>{% endif %}</div>
   <ul>
   {% for line in res.explanation.text[:4] %}<li>{{ line }}</li>{% endfor %}
   </ul>
-  {% if res.recheck_after %}<div class="small">Пересчитать: {% for x in res.recheck_after[:3] %}{{ x.time[5:16]|replace("T", " ") }} ({{ x.reason }}){% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
+  {% if res.recheck_after %}<div class="small">Пересчитать: {% for x in res.recheck_after[:3] %}{{ x.time|msk("%d.%m %H:%M") }} МСК ({{ x.reason }}){% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
 </div>
 
 <h2>Окна (лучшие и плановое)</h2>
 <table>
-  <tr><th>Окно</th><th>UTC</th><th>Статус</th>{% for m in res.timeline %}<th>{{ MECH_TEXT.get(m, m) }}</th>{% endfor %}<th>Запас на задержку</th></tr>
+  <tr><th>Окно</th><th>МСК</th><th>Статус</th>{% for m in res.timeline %}<th>{{ MECH_TEXT.get(m, m) }}</th>{% endfor %}<th>Запас на задержку</th></tr>
   {% set shown = [] %}
   {% for w in ranked %}{% if loop.index <= 6 or w.is_planned %}
-  <tr><td>{{ w.id }}{% if w.is_planned %} (план){% endif %}</td><td>{{ w.start[5:16]|replace("T", " ") }} – {{ w.end[11:16] }}</td>
+  <tr><td>{{ w.id }}{% if w.is_planned %} (план){% endif %}</td><td>{{ w.start|msk("%d.%m %H:%M") }} – {{ w.end|msk }}</td>
     <td><span class="pill {{ w.status }}">{{ STATUS_TEXT.get(w.status, w.status) }}</span></td>
     {% for m in res.timeline %}{% set st = w.mechanisms[m] %}
     <td><span class="light l-{{ st.worst }}"></span>{% if st.minutes.critical %}крит {{ st.minutes.critical|round|int }} мин{% elif st.minutes.no_data %}нет данных {{ st.minutes.no_data|round|int }} мин{% elif st.minutes.undesirable %}нежел {{ st.minutes.undesirable|round|int }} мин{% else %}приемлемо{% endif %}</td>

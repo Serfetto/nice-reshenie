@@ -1,6 +1,7 @@
 """Текстовые объяснения рекомендации — из тех же фактов, что и расчёт."""
 from __future__ import annotations
 
+from common.timeutil import msk
 from services.assessment.core.timeline import REASONS
 
 MECH_TITLES = {"radiation": "Радиация", "mmod": "Мусор и метеороиды"}
@@ -23,7 +24,7 @@ RULE_TEXT = {
 
 
 def _hm(iso_str: str) -> str:
-    return iso_str[11:16]
+    return msk(iso_str)
 
 
 def mech_summary(name: str, st: dict) -> str:
@@ -47,7 +48,7 @@ def mech_summary(name: str, st: dict) -> str:
 
 
 def window_summary(w: dict) -> str:
-    head = f"{w['id']} {_hm(w['start'])}–{_hm(w['end'])} UTC: {STATUS_TEXT.get(w['status'], w['status'])}"
+    head = f"{w['id']} {_hm(w['start'])}–{_hm(w['end'])} МСК: {STATUS_TEXT.get(w['status'], w['status'])}"
     body = ". ".join(mech_summary(n, s) for n, s in w["mechanisms"].items())
     ov = w["overrun"]
     tail = (f"Запас на задержку: критических факторов нет в течение {ov['margin_min']} мин после окончания"
@@ -58,7 +59,7 @@ def window_summary(w: dict) -> str:
 
 def conjunction_text(e: dict) -> str:
     """Сближение простыми словами: когда, с чем, как близко и что значит такая скорость."""
-    return (f"сближение с {e['object_name']} ({e.get('object_type') or 'объект'}) в {_hm(e['tca'])} UTC на "
+    return (f"сближение с {e['object_name']} ({e.get('object_type') or 'объект'}) в {_hm(e['tca'])} МСК на "
             f"{e['min_range_km']:.1f} км — проход через зону контроля; {e['pass_type']} пролёт, относительная скорость "
             f"{e['rel_speed_km_s']:.1f} км/с: при такой скорости 1 г вещества несёт ~{e['energy_per_gram_kj']:.0f} кДж "
             f"(≈{e['tnt_equiv_per_gram_g']:.0f} г тротила), поэтому размер объекта и вероятность попадания не взвешиваются")
@@ -76,7 +77,7 @@ def build_explanation(ev: dict, notes: list[str], conjunctions: list[dict] | Non
     lines = []
     if rec["status"] in ("preferred", "equivalent"):
         best = windows[rec["window"]]
-        lines.append(f"Рекомендуемое окно — {best['id']} ({_hm(best['start'])}–{_hm(best['end'])} UTC), "
+        lines.append(f"Рекомендуемое окно — {best['id']} ({_hm(best['start'])}–{_hm(best['end'])} МСК), "
                      f"правило {rec['rule']}: {RULE_TEXT.get(rec['rule'], '')}.")
         lines.append(window_summary(best))
         if rec.get("equivalent_windows"):

@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, Response, Streami
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from common.timeutil import msk
 from services.report import render
 
 HERE = Path(__file__).resolve().parent
@@ -27,6 +28,7 @@ INGEST_URL = os.getenv("INGEST_URL", "http://localhost:8001").rstrip("/")
 app = FastAPI(title="report — интерфейс и отчёты ВКД")
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
+templates.env.filters["msk"] = msk
 templates.env.globals.update(STATUS_TEXT=render.STATUS_TEXT, REC_TEXT=render.REC_TEXT,
                              MODE_TEXT=render.MODE_TEXT, KIND_TEXT=render.KIND_TEXT, MECH_TEXT=render.MECH_TEXT)
 _client = httpx.AsyncClient(timeout=120)

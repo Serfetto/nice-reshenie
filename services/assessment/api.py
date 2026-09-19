@@ -12,7 +12,7 @@ from sqlalchemy import delete, or_, select, update
 from common import config
 from common.db import alerts, get_engine, init_db, runs, watches
 from common.freshness import sources_overview
-from common.timeutil import iso, utcnow
+from common.timeutil import iso, msk, utcnow
 from services.assessment import jobs, watch
 from services.assessment.runner import RunError
 from services.assessment.schemas import RunRequest
@@ -49,12 +49,18 @@ def get_config():
 
 @app.post("/runs", status_code=202)
 def create_run(req: RunRequest):
+    if req.mode in ("replay", "review") and req.as_of is not None and req.as_of > utcnow() + timedelta(minutes=1):
+        # данных «из будущего» нет: расчёт покажет только устаревшие источники и «нет данных»
+        raise HTTPException(422, f"Момент {msk(req.as_of, '%d.%m.%Y %H:%M')} МСК ещё не наступил "
+                                 f"(сейчас {msk(utcnow(), '%d.%m.%Y %H:%M')} МСК). "
+                                 "Для расчёта на текущий момент выберите «Сейчас».")
     if req.mode != "review":
         # прогноз выбирает из будущих вариантов: окно, начатое до момента расчёта, рекомендовать нельзя
         t = req.as_of if req.mode == "replay" else utcnow() - timedelta(minutes=15)
         for title, v in (("Самое раннее начало", req.earliest_start), ("Плановое начало", req.planned_start)):
             if v is not None and v < t:
-                raise HTTPException(422, f"{title} {iso(v)} раньше момента расчёта {iso(req.as_of or utcnow())}: "
+                raise HTTPException(422, f"{title} {msk(v, '%d.%m %H:%M')} МСК раньше момента расчёта "
+                                         f"{msk(req.as_of or utcnow(), '%d.%m %H:%M')} МСК: "
                                          "варианты для прогноза начинаются не раньше него. "
                                          "Чтобы разобрать прошедшее, включите «Разбор».")
     run_id = jobs.submit_assessment(req)
