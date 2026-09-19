@@ -112,6 +112,36 @@ const ageText = (s) => (s === null || s === undefined ? "—" : s < 120 ? `${s} 
   s < 172800 ? `${(s / 3600).toFixed(1)} ч` : `${Math.round(s / 86400)} сут`);
 const reasonText = (code, fallback) => REASON_PLAIN[code] || fallback || code;
 
+function themeColors() {
+  const css = getComputedStyle(document.documentElement);
+  const value = (name) => css.getPropertyValue(name).trim();
+  return {
+    background: value("--chart-bg"), grid: value("--chart-grid"), text: value("--text"),
+    textStrong: value("--text-strong"), muted: value("--muted"), land: value("--chart-land"),
+    ocean: value("--chart-ocean"), coast: value("--chart-coast"), route: value("--chart-route"),
+  };
+}
+
+function setTheme(theme, persist = true) {
+  const next = theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  if (persist) localStorage.setItem("eva-theme", next);
+  const button = $("themeToggle");
+  if (button) {
+    button.innerHTML = next === "dark"
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.4 15.5A8.4 8.4 0 0 1 8.5 3.6 8.7 8.7 0 1 0 20.4 15.5Z"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+    button.setAttribute("aria-pressed", String(next === "dark"));
+    const action = `Включить ${next === "dark" ? "светлую" : "тёмную"} тему`;
+    button.setAttribute("aria-label", action);
+    button.title = action;
+  }
+  if (S.res && S.detailsOpen) {
+    renderTimeline();
+    if (S.tab === "map") renderMap();
+  }
+}
+
 async function api(path, opts = {}) {
   const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   let data = null;
@@ -544,6 +574,7 @@ function seriesArr(key) { return (S.res.series[key] || []).map((v) => (v === nul
 
 function renderTimeline() {
   const r = S.res, s = r.series, t = s.times, tx = t.map(mskStr);  // t — UTC для сравнений, tx — МСК для оси
+  const theme = themeColors();
   const bandRows = Object.keys(r.timeline);
   const bandAxes = { [bandRows[0]]: "y", [bandRows[1]]: "y2" };
   const shapes = [], traces = [];
@@ -583,7 +614,7 @@ function renderTimeline() {
       name: "пролёт ЮАА", line: { color: "#e0a030", width: 6 }, hoverinfo: "skip" });
   }
   shapes.push({ type: "line", xref: "x", yref: "paper", x0: mskStr(r.as_of), x1: mskStr(r.as_of), y0: 0, y1: 1,
-    line: { color: "#fff", width: 1, dash: "dash" } });
+    line: { color: theme.textStrong, width: 1, dash: "dash" } });
   // где заканчивается количественный прогноз потока — дальше только суточная вероятность
   const extraNotes = [];
   const p10 = seriesArr("radiation.p_ge10");
@@ -600,8 +631,8 @@ function renderTimeline() {
     shapes.push({ type: "rect", xref: "x", yref: "paper", x0: mskStr(from), x1: tx[tx.length - 1], y0: 0.34, y1: 0.74,
       line: { width: 0 }, fillcolor: "rgba(138,146,156,0.13)" });
     extraNotes.push({ xref: "x", yref: "paper", x: mskStr(from), y: 0.72, xanchor: "left", yanchor: "top", xshift: 6, showarrow: false,
-      text: text.replace(" — ", "<br>"), align: "left", font: { color: "#cfd5dc", size: 11 },
-      bgcolor: "rgba(22,29,37,0.8)" });
+      text: text.replace(" — ", "<br>"), align: "left", font: { color: theme.text, size: 11 },
+      bgcolor: theme.background });
   }
   // где Kp неизвестен и принят консервативно
   const kpA = seriesArr("radiation.kp_assumed");
@@ -611,7 +642,7 @@ function renderTimeline() {
     shapes.push({ type: "rect", xref: "x", yref: "paper", x0: tx[aIdx], x1: tx[bIdx], y0: 0, y1: 0.26,
       line: { width: 0 }, fillcolor: "rgba(138,146,156,0.13)" });
     extraNotes.push({ xref: "x", yref: "paper", x: tx[aIdx], y: 0.25, xanchor: "left", yanchor: "top", xshift: 6, showarrow: false,
-      text: "Kp неизвестен (нет прогноза) — принят 5 с запасом", font: { color: "#cfd5dc", size: 11 }, bgcolor: "rgba(22,29,37,0.8)" });
+      text: "Kp неизвестен (нет прогноза) — принят 5 с запасом", font: { color: theme.text, size: 11 }, bgcolor: theme.background });
   }
   const rec = S.byId[r.recommendation.window], plan = S.byId[r.planned];
   if (rec) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: mskStr(rec.start), x1: mskStr(rec.end), y0: 0.77, y1: 1,
@@ -620,19 +651,19 @@ function renderTimeline() {
     y0: 0.77, y1: 1, line: { color: "#cfd5dc", width: 1, dash: "dot" }, fillcolor: "rgba(0,0,0,0)" });
   S.baseShapes = shapes;
   const layout = {
-    paper_bgcolor: "#161d25", plot_bgcolor: "#161d25", font: { color: "#dfe6ee", size: 11 },
+    paper_bgcolor: theme.background, plot_bgcolor: theme.background, font: { color: theme.text, size: 11 },
     margin: { l: 110, r: 10, t: 10, b: 30 }, hovermode: "closest", showlegend: true,
     legend: { orientation: "h", y: -0.08, font: { size: 11 } },
-    xaxis: { type: "date", gridcolor: "#2a3542", anchor: "y4" },
+    xaxis: { type: "date", gridcolor: theme.grid, anchor: "y4" },
     yaxis: { domain: [0.9, 0.98], range: [0, 1], visible: false, fixedrange: true },
     yaxis2: { domain: [0.8, 0.88], range: [0, 1], visible: false, fixedrange: true },
-    yaxis3: { domain: [0.34, 0.74], type: "log", title: { text: "частиц, pfu" }, gridcolor: "#2a3542", exponentformat: "power" },
-    yaxis4: { domain: [0, 0.26], range: [0, 9.5], title: { text: "Kp" }, gridcolor: "#2a3542" },
+    yaxis3: { domain: [0.34, 0.74], type: "log", title: { text: "частиц, pfu" }, gridcolor: theme.grid, exponentformat: "power" },
+    yaxis4: { domain: [0, 0.26], range: [0, 9.5], title: { text: "Kp" }, gridcolor: theme.grid },
     shapes: shapes.concat(selShape()),
     annotations: [
       ...bandRows.map((m, i) => ({ xref: "paper", yref: "paper", x: 0, y: i === 0 ? 0.94 : 0.84, xanchor: "right",
         text: MECH_TEXT[m], showarrow: false, xshift: -6 })),
-      { xref: "x", yref: "paper", x: mskStr(r.as_of), y: 0.77, text: "T", showarrow: false, xanchor: "left", xshift: 3, font: { color: "#fff" } },
+      { xref: "x", yref: "paper", x: mskStr(r.as_of), y: 0.77, text: "T", showarrow: false, xanchor: "left", xshift: 3, font: { color: theme.textStrong } },
       ...extraNotes,
     ],
   };
@@ -690,6 +721,7 @@ function isNotableConj(e) { return e.in_control_box || e.min_range_km <= NOTABLE
 function renderMap() {
   const r = S.res, s = r.series, w = S.byId[S.sel];
   if (!w) return;
+  const theme = themeColors();
   const t = s.times, cls = s["radiation.class"] || [];
   const clsName = { "-1": "no_data", 0: "acceptable", 1: "undesirable", 2: "critical" };
   const lat = [], lon = [], col = [], txt = [];
@@ -702,7 +734,7 @@ function renderMap() {
       (s["radiation.e_cut_mev"] ? `<br>магнитное поле пропускает частицы от ${num(s["radiation.e_cut_mev"][i])} МэВ` : ""));
   });
   const traces = [
-    { type: "scattergeo", lat: s.lat, lon: s.lon, mode: "lines", line: { color: "#3b4654", width: 1 }, hoverinfo: "skip", name: "весь путь" },
+    { type: "scattergeo", lat: s.lat, lon: s.lon, mode: "lines", line: { color: theme.route, width: 1 }, hoverinfo: "skip", name: "весь путь" },
     { type: "scattergeo", lat, lon, mode: "markers", marker: { size: 5, color: col }, text: txt, hoverinfo: "text",
       name: `выход ${hm(w.start)}–${hm(w.end)}` },
   ];
@@ -715,10 +747,10 @@ function renderMap() {
       hoverinfo: "text", name: "сближения" });
   }
   Plotly.react("map", traces, {
-    paper_bgcolor: "#161d25", font: { color: "#dfe6ee", size: 11 }, margin: { l: 0, r: 0, t: 0, b: 0 },
+    paper_bgcolor: theme.background, font: { color: theme.text, size: 11 }, margin: { l: 0, r: 0, t: 0, b: 0 },
     showlegend: true, legend: { orientation: "h", y: 0 },
-    geo: { projection: { type: "natural earth" }, showland: true, landcolor: "#223041", showocean: true,
-      oceancolor: "#121a23", coastlinecolor: "#51606f", bgcolor: "#161d25", lataxis: { range: [-65, 65] } },
+    geo: { projection: { type: "natural earth" }, showland: true, landcolor: theme.land, showocean: true,
+      oceancolor: theme.ocean, coastlinecolor: theme.coast, bgcolor: theme.background, lataxis: { range: [-65, 65] } },
   }, { displaylogo: false, responsive: true, topojsonURL: "/static/vendor/" });
   $("mapHint").textContent = "Цвет точки — обстановка в этот момент. Ближе к полюсам магнитное поле Земли хуже защищает от " +
     "частиц; над Южной Атлантикой — зона повышенной радиации (ЮАА).";
@@ -1078,6 +1110,7 @@ function route() {
 
 // ---------- запуск ----------
 function init() {
+  setTheme(document.documentElement.dataset.theme, false);
   setMode("history");
   buildOverrides();
   $("asOf").value = "2024-06-08T06:00";  // МСК
@@ -1109,6 +1142,9 @@ function init() {
   initPages();
   window.addEventListener("hashchange", route);
   route();
+  $("themeToggle").addEventListener("click", () => {
+    setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
   TZ_FIELDS.forEach((id) => $(id).addEventListener("input", updateTzHints));
   const tick = () => { $("clock").textContent = `${nowMsk()} МСК`; updateTzHints(); };
