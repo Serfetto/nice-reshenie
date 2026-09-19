@@ -88,13 +88,34 @@ def integral_above(e_cut: np.ndarray, energies: list[float], j: np.ndarray) -> n
     return out
 
 
-def _decay_rate(t: np.ndarray, v: np.ndarray, last: np.datetime64, window_h: float) -> float | None:
-    """Наклон ln(потока) в час по последним window_h часам."""
+def _robust_log_trend(t: np.ndarray, v: np.ndarray, last: np.datetime64, window_h: float,
+                      min_samples: int = 6) -> tuple[float | None, float | None, int]:
+    """Робастный тренд ln(потока) и разброс остатков.
+
+    Theil--Sen (медиана всех парных наклонов) не даёт одному выбросу GOES
+    изменить фазу события. ``sigma`` — робастная MAD-оценка разброса в ln(J),
+    нужна для честного коридора неопределённости, а не для автоматического
+    ужесточения класса риска.
+    """
     m = (t > last - np.timedelta64(int(window_h * 3600), "s")) & (t <= last) & (v > 0)
-    if m.sum() < 6:
-        return None
-    x = (t[m] - last).astype(float) / 3600.0
-    return float(np.polyfit(x, np.log(v[m]), 1)[0])
+    if m.sum() < min_samples:
+        return None, None, int(m.sum())
+    # ``t`` бывает в секундах (боевой трек) и минутах (unit-тесты);
+    # нормализуем единицу до вычисления наклона, чтобы единица datetime64 не меняла ln/ч.
+    x = (t[m] - last).astype("timedelta64[s]").astype(float) / 3600.0
+    y = np.log(v[m])
+    i, j = np.triu_indices(len(x), 1)
+    slopes = (y[j] - y[i]) / (x[j] - x[i])
+    slope = float(np.median(slopes[np.isfinite(slopes)]))
+    intercept = float(np.median(y - slope * x))
+    residual = y - (intercept + slope * x)
+    sigma = float(1.4826 * np.median(np.abs(residual - np.median(residual))))
+    return slope, sigma, int(m.sum())
+
+
+def _decay_rate(t: np.ndarray, v: np.ndarray, last: np.datetime64, window_h: float) -> float | None:
+    """Совместимость с ранними сохранёнными расчётами и точечными тестами."""
+    return _robust_log_trend(t, v, last, window_h)[0]
 
 
 def _warning_intervals(msgs, codes: tuple[str, ...]) -> list[dict]:
@@ -167,6 +188,8 @@ def assess_radiation(sl: DataSlice, track: orbit.Track, cfg: dict, model: str = 
     evidence: dict[str, dict] = {}
     notes: list[str] = []
     fit_h = c["decay_fit_window_h"]
+    forecast_low = np.full(n, np.nan)
+    forecast_high = np.full(n, np.nan)
 
     # --- 1. Наблюдения GOES ---
     obs_t, obs_v, obs_rows = {}, {}, {}
@@ -251,7 +274,8 @@ def assess_radiation(sl: DataSlice, track: orbit.Track, cfg: dict, model: str = 
     fut = grid > T
     horizon = np.timedelta64(int(c["forecast_horizon_h"] * 3600), "s")
     if last_t is not None and fresh and last_spec is not None and np.isfinite(last_spec[0]):
-        k_rate = _decay_rate(t10, v10, last_t, fit_h)
+        min_samples = int(c["forecast_min_samples"])
+        k_rate, fit_sigma, fit_n = _robust_log_trend(t10, v10, last_t, fit_h, min_samples)
         h = (grid - last_t) / np.timedelta64(1, "h")
         if model == "persistence":
             use = fut
@@ -262,7 +286,7 @@ def assess_radiation(sl: DataSlice, track: orbit.Track, cfg: dict, model: str = 
         elif model == "team":
             use = fut & ((grid - last_t) <= horizon)
             rate, cap, model_text = 0.0, None, "сохранение текущего значения"
-            k_short = _decay_rate(t10, v10, last_t, 1.0)
+            k_short, _short_sigma, short_n = _robust_log_trend(t10, v10, last_t, 1.0, min_samples)
             if k_rate is not None and last_spec[0] >= 1.0 and k_rate < 0:
                 rate = max(k_rate, -c["max_decay_per_h"])
                 model_text = "экспоненциальный спад"
@@ -274,9 +298,20 @@ def assess_radiation(sl: DataSlice, track: orbit.Track, cfg: dict, model: str = 
             if cap is not None:
                 factor = np.minimum(factor, cap)
             fkind, fkey = "forecast_team", "team_forecast"
+            # Коридор нужен оператору и для аудита: класс вычисляется по центральной
+            # оценке, поэтому неопределённость не превращается в скрытое умножение риска.
+            sigma0 = max(float(fit_sigma or 0.0), float(c["forecast_residual_floor_ln"]))
+            sigma_h = sigma0 + np.clip(h, 0, None) * float(c["forecast_uncertainty_growth_per_h"])
+            team_points = fut & ((grid - last_t) <= horizon)
+            forecast_low[team_points] = last_spec[0] * factor[team_points] * np.exp(-sigma_h[team_points])
+            forecast_high[team_points] = last_spec[0] * factor[team_points] * np.exp(sigma_h[team_points])
             evidence[fkey] = {
                 "layer": "forecast", "kind": "forecast_team", "source": "team", "model": model_text,
+                "estimator": "Theil–Sen по ln(J), медиана парных наклонов",
                 "ln_rate_per_h": round(rate, 4), "fitted_rate_per_h": None if k_rate is None else round(k_rate, 4),
+                "fit_samples": fit_n, "fit_residual_sigma_ln": round(sigma0, 4),
+                "short_rate_per_h": None if k_short is None else round(k_short, 4), "short_fit_samples": short_n,
+                "forecast_interval": "центральная оценка × exp(±(MAD + 0.08·ч)); класс по центральной оценке",
                 "growth_cap": cap, "fit_window_h": fit_h, "horizon_h": c["forecast_horizon_h"],
                 "base_time": iso(from_np(last_t))}
         else:  # swpc_only — базовый подход «только готовые предупреждения»
@@ -439,7 +474,8 @@ def assess_radiation(sl: DataSlice, track: orbit.Track, cfg: dict, model: str = 
     hours = (grid - last_t) / np.timedelta64(1, "h") if last_t is not None else np.full(n, np.inf)
     conf_reason = np.array([_conf_reason(kind[i], conf[i], reason[i], kp_kind[i] == "assumed", float(hours[i]))
                             for i in range(n)], dtype=object)
-    series = {"p_ge10": J[:, 0], "p_ge100": J[:, energies.index(100.0)], "j_iss": j_iss, "kp": kp,
+    series = {"p_ge10": J[:, 0], "p_ge100": J[:, energies.index(100.0)], "forecast_p_ge10_low": forecast_low,
+              "forecast_p_ge10_high": forecast_high, "j_iss": j_iss, "kp": kp,
               "rc_gv": rc, "e_cut_mev": e_cut, "saa": saa.astype(float), "prob_sep": prob,
               "kp_assumed": (kp_kind == "assumed").astype(float)}
     return MechanismTimeline(name="radiation", times=grid, cls=cls, reason=reason, kind=kind, confidence=conf,

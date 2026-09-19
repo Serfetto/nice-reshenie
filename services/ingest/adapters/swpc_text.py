@@ -111,7 +111,7 @@ class Swpc3Day(_IssuedText):
                 url = self.cfg["archive_url"].format(yyyy=f"{d:%Y}", mm=f"{d:%m}", yyyymmdd=f"{d:%Y%m%d}", hhmm=hhmm)
                 try:
                     self.fetch_and_store(engine, url, result, not_found_ok=True)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - retain other forecast issues when one file fails
                     result.errors.append(str(e))
             d += timedelta(days=1)
         return result
@@ -143,7 +143,7 @@ class SwpcRsga(_IssuedText):
             url = self.cfg["archive_url"].format(yyyy=f"{d:%Y}", mm=f"{d:%m}", yyyymmdd=f"{d:%Y%m%d}")
             try:
                 self.fetch_and_store(engine, url, result, not_found_ok=True)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - retain other RSGA issues when one file fails
                 result.errors.append(str(e))
             d += timedelta(days=1)
         return result

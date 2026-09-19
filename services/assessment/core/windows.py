@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
-from common.timeutil import from_np, iso, to_np
+from common.timeutil import iso, to_np
 from services.assessment.core.timeline import (ACCEPTABLE, CLASS_NAMES, CRITICAL, NO_DATA, UNDESIRABLE,
                                                MechanismTimeline, min_confidence)
 

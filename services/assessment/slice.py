@@ -13,7 +13,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 
 from common import config

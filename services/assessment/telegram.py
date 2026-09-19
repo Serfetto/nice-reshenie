@@ -276,7 +276,7 @@ def _poll_loop() -> None:
                 offset = u["update_id"] + 1
                 try:
                     handle(u)
-                except Exception:
+                except Exception:  # noqa: BLE001 - one malformed command must not terminate polling
                     log.exception("Telegram: ошибка обработки команды")
         except TelegramError as e:
             if e.status == 409:
@@ -289,7 +289,7 @@ def _poll_loop() -> None:
             STATE.update(polling=False, error=err)
             log.warning("Telegram: %s", err)
             time.sleep(300 if e.status == 401 else 30)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - polling restarts after an unexpected transport failure
             STATE.update(polling=False, error=f"{type(e).__name__}: {e}")
             log.exception("Telegram: сбой приёма команд")
             time.sleep(15)

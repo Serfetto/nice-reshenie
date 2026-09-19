@@ -100,7 +100,7 @@ def ensure_archive(engine: Engine | None = None, start: date | None = None, end:
             STATE["current"] = f"{name} {a}–{b}"
             try:
                 res = ad.backfill(engine, a, b)
-            except Exception as e:  # сбой — дни не помечаются, повтор при следующем запуске
+            except Exception as e:  # noqa: BLE001 - retry next startup; never mark a failed archive range complete
                 log.warning("%s: архив %s–%s не загружен: %s", name, a, b, e)
                 st["errors"].append(f"{a}–{b}: {e}")
                 STATE["done_days"] += (b - a).days + 1
@@ -132,7 +132,7 @@ def start_background() -> bool:
     def run():
         try:
             ensure_archive()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - bootstrap state must expose failure and allow a later retry
             log.exception("Досбор архива упал")
             STATE.update(state="errors", finished_at=iso(utcnow()), error=f"{type(e).__name__}: {e}")
         finally:

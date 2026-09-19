@@ -86,7 +86,7 @@ class GoesProtons(Adapter):
             url = self.cfg["archive_url"].format(sat=sat, yyyy=f"{d:%Y}", mm=f"{d:%m}", yyyymmdd=f"{d:%Y%m%d}")
             try:
                 self.fetch_and_store(engine, url, result, not_found_ok=True)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - one unavailable archive day is recorded and skipped
                 result.errors.append(str(e))
             d += timedelta(days=1)
         return result

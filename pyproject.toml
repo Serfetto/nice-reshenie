@@ -1,0 +1,14 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = ["data", "services/report/static/vendor"]
+
+[tool.ruff.lint]
+# Неиспользуемые имена и слепые перехваты. BLE001 намеренно включён:
+# широкие перехваты допустимы только на изолированных границах сервиса и
+# должны быть помечены локальным noqa с причиной — иначе CI падает.
+select = ["F", "BLE001"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

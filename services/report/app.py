@@ -41,7 +41,7 @@ async def health():
         try:
             r = await _client.get(url + "/health", timeout=5)
             out[name] = "ok" if r.status_code == 200 else f"HTTP {r.status_code}"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - health endpoint must report any upstream failure
             out[name] = f"недоступен: {type(e).__name__}"
     return out
 
@@ -87,7 +87,7 @@ async def alerts_stream(request: Request, since_id: int = 0):
                 r = await _client.get(ASSESSMENT_URL + "/alerts", params={"since_id": 0, "limit": 500})
                 items = r.json()
                 last = items[-1]["id"] if items else 0
-            except Exception:
+            except Exception:  # noqa: BLE001 - an initial SSE sync is optional
                 pass
         idle = 0
         while True:
@@ -99,7 +99,7 @@ async def alerts_stream(request: Request, since_id: int = 0):
                     last = a["id"]
                     yield f"id: {a['id']}\nevent: alert\ndata: {json.dumps(a, ensure_ascii=False)}\n\n"
                     idle = 0
-            except Exception:
+            except Exception:  # noqa: BLE001 - SSE remains open and reports an upstream failure
                 yield "event: error\ndata: {\"detail\": \"assessment недоступен\"}\n\n"
             idle += 1
             if idle % 8 == 0:
@@ -187,7 +187,7 @@ async def export_zip(run_id: str):
         done = [x for x in r.json() if x.get("kind") == "verify" and x.get("status") == "done"]
         if done:
             verification = (await _client.get(f"{ASSESSMENT_URL}/runs/{done[0]['run_id']}")).json()
-    except Exception:
+    except Exception:  # noqa: BLE001 - an optional verification must not block ZIP export
         pass
     return Response(build_zip(run, verification), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="vkd_{run_id}.zip"'})

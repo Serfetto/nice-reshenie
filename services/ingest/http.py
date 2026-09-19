@@ -49,7 +49,7 @@ def get(url: str, *, timeout: float = 60, retries: int = 2, client: httpx.Client
             last_err = e
             if e.status and 400 <= e.status < 500 and e.status != 429:
                 break
-        except Exception as e:  # сеть, таймаут, FTP
+        except Exception as e:  # noqa: BLE001 - transport boundary normalizes HTTP, FTP and TLS failures
             last_err = e
         if attempt < retries:
             time.sleep(2 * (attempt + 1))

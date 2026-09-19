@@ -48,7 +48,7 @@ class KpObserved(Adapter):
                                              end=f"{end:%Y-%m-%d}T23:59:59Z")
         try:
             self.fetch_and_store(engine, url, result)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - archive fallback failure is reported in source status
             result.errors.append(str(e))
         return result
 
