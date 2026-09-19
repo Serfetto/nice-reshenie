@@ -1,182 +1,399 @@
 <!doctype html>
 <html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ВКД · выбор времени выхода</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='%231b6fd6'/></svg>">
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="/static/vendor/plotly.min.js"></script>
-</head>
-<body>
-<header class="top">
-  <div class="brand">ВКД <span>· когда лучше выходить в открытый космос</span></div>
-  <div id="modeBadge" class="badge hidden"></div>
-  <div class="spacer"></div>
-  <div id="srcChips" class="chips" title="Состояние источников данных"></div>
-  <button id="helpBtn" class="bell" type="button">Как пользоваться</button>
-  <button id="bell" class="bell" type="button">Предупреждения <span id="bellCount" class="count">0</span></button>
-  <div id="clock" class="clock"></div>
-</header>
-
-<div class="layout">
-  <aside class="side">
-    <form id="form" autocomplete="off">
-      <div class="step"><b>1</b> Для какого момента считаем?</div>
-      <div class="seg two" id="modeSeg">
-        <button type="button" data-mode="now">Сейчас</button>
-        <button type="button" data-mode="history" class="on">Прошлая дата</button>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ВКД · выбор времени выхода</title>
+    <script>
+      (() => {
+        const saved = localStorage.getItem("eva-theme");
+        const theme =
+          saved === "light" || saved === "dark"
+            ? saved
+            : matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='%231b6fd6'/></svg>"
+    />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/vendor/plotly.min.js"></script>
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand" aria-label="ВКД – оценка рисков">
+        ВКД <span>Оценка рисков</span>
       </div>
-      <div id="historyBox">
-        <label>Дата и время, UTC
-          <input type="datetime-local" id="asOf" step="60">
-        </label>
-        <label class="inline check"><input type="checkbox" id="reviewChk">
-          <span>Разбор: считать по полному архиву<br><span class="muted">иначе — только по данным, известным на этот момент</span></span>
-        </label>
-      </div>
+      <div id="modeBadge" class="badge hidden"></div>
+      <div class="spacer"></div>
+      <div
+        id="srcChips"
+        class="chips"
+        title="Состояние источников данных"
+      ></div>
+      <button
+        id="themeToggle"
+        class="theme-toggle"
+        type="button"
+        aria-label="Переключить цветовую тему"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20.4 15.5A8.4 8.4 0 0 1 8.5 3.6 8.7 8.7 0 1 0 20.4 15.5Z" />
+        </svg>
+      </button>
+      <button id="helpBtn" class="top-action" type="button">Справка</button>
+      <button id="bell" class="top-action" type="button">
+        События <span id="bellCount" class="count">0</span>
+      </button>
+      <div id="clock" class="clock"></div>
+    </header>
 
-      <div class="step"><b>2</b> Сколько длится выход?</div>
-      <div class="row2">
-        <label>часов <input type="number" id="durH" min="1" max="8" value="6"></label>
-        <label>минут <input type="number" id="durM" min="0" max="55" step="5" value="30"></label>
-      </div>
-
-      <div class="step"><b>3</b> Когда планируете начать? <span class="opt">необязательно</span></div>
-      <label>Плановое начало, UTC — сравним с лучшим вариантом
-        <input type="datetime-local" id="planned" step="60"></label>
-      <label>допустимо не раньше, UTC <span class="opt">по умолчанию — ближайшие сутки</span>
-        <input type="datetime-local" id="earliest" step="60"></label>
-      <label>допустимо не позже, UTC <input type="datetime-local" id="latest" step="60"></label>
-
-      <button type="submit" id="runBtn" class="primary">Найти лучшее время</button>
-      <div id="progress" class="progress hidden"><div class="bar"><i></i></div><span></span></div>
-      <div id="formErr" class="err"></div>
-
-      <details>
-        <summary>Дополнительно</summary>
-        <label>Время возвращения в шлюз, мин <input type="number" id="retMin" min="0" max="240" value="30"></label>
-        <label>Запас на задержку работ, мин <input type="number" id="marginMin" min="0" max="240" value="60"></label>
-        <label>Шаг перебора вариантов, мин <input type="number" id="stepMin" min="5" max="60" value="15"></label>
-        <label>Модель прогноза радиации
-          <select id="model">
-            <option value="team">наша: рост/спад на 6 ч + предупреждения SWPC</option>
-            <option value="persistence">простая: «как сейчас, так и будет»</option>
-            <option value="swpc_only">простая: только предупреждения SWPC</option>
-          </select>
-        </label>
-        <p class="hint">Проверка сбоя: отключите или «заморозьте» источник — только для этого расчёта.</p>
-        <div id="overrides"></div>
-      </details>
-    </form>
-
-    <section class="side-sec">
-      <h3>Готовые примеры</h3>
-      <div class="examples" id="examples">
-        <button type="button" data-preset="0608"><b>8 июня 2024, 03:00</b><span>Началась сильная солнечная буря. Какое время выбрала бы система?</span></button>
-        <button type="button" data-preset="0510"><b>10 мая 2024, 21:00</b><span>Частицы от Солнца и сильнейшая магнитная буря.</span></button>
-        <button type="button" data-preset="0511"><b>11 мая 2024 — разбор</b><span>Как всё было на самом деле, по полному архиву.</span></button>
-        <button type="button" data-preset="0526"><b>26 мая 2024</b><span>Спокойный день, но план на 00:45 попадает на сближение с объектом.</span></button>
-        <button type="button" data-preset="1009"><b>9 октября 2024</b><span>Вне проверочного периода: протоны S3 и буря G4 — проверка на новом событии.</span></button>
-      </div>
-    </section>
-
-    <section class="side-sec">
-      <h3>Прошлые расчёты</h3>
-      <ul id="runsList" class="list"></ul>
-    </section>
-  </aside>
-
-  <main>
-    <section id="empty" class="empty">
-      <h1>Когда лучше выходить в открытый космос</h1>
-      <ol class="howto">
-        <li><b>Выберите момент.</b> «Сейчас» — живые данные. «Прошлая дата» — проверка на реальных днях 2024 года:
-          система видит только то, что было известно в тот момент.</li>
-        <li><b>Укажите длительность выхода.</b></li>
-        <li><b>Нажмите «Найти лучшее время».</b> Система переберёт варианты начала с шагом 15 минут и покажет,
-          когда меньше всего неблагоприятных условий и почему.</li>
-      </ol>
-      <p>Проще всего начать с готового примера слева.</p>
-      <div class="legend big">
-        <span><i class="c-acceptable"></i>без замечаний</span>
-        <span><i class="c-undesirable"></i>нежелательно</span>
-        <span><i class="c-critical"></i>стоп-фактор — выход не рекомендуется</span>
-        <span><i class="c-no_data"></i>нет данных — оценить нельзя</span>
-      </div>
-      <p class="muted">Учитываются два вида опасности: частицы от Солнца (с учётом того, где летит станция) и
-        мусор и метеороиды (сближения с отслеживаемыми объектами и метеорные потоки). Это оценка внешних условий, а не доза
-        облучения; решение о выходе принимают специалисты.</p>
-    </section>
-
-    <section id="result" class="hidden">
-      <div id="planBanner" class="banner hidden"></div>
-      <div class="card answer" id="answer"></div>
-
-      <div class="card">
-        <div class="card-h">
-          <h2>Все варианты начала</h2>
-          <div class="legend">
-            <span><i class="c-best"></i>лучший</span><span><i class="c-acceptable"></i>хороший</span>
-            <span><i class="c-undesirable"></i>хуже</span><span><i class="c-critical"></i>не рекомендуется</span>
-            <span><i class="c-no_data"></i>нет данных</span>
-          </div>
+    <div class="layout">
+      <aside class="side">
+        <div class="side-heading">
+          <span class="eyebrow">Новый расчёт</span>
+          <h2>Параметры выхода</h2>
+          <p>Задайте момент, длительность и допустимый период начала.</p>
         </div>
-        <div id="strip" class="strip"></div>
-        <div id="stripAxis" class="strip-axis"></div>
-        <div id="variant" class="variant"></div>
-      </div>
+        <form id="form" autocomplete="off">
+          <section class="form-section">
+            <div class="form-section-head">
+              <span>01</span>
+              <div>
+                <b>Исходный момент</b
+                ><small>живые данные или исторический сценарий</small>
+              </div>
+            </div>
+            <div class="seg two" id="modeSeg">
+              <button type="button" data-mode="now">Сейчас</button>
+              <button type="button" data-mode="history" class="on">
+                Выбрать дату
+              </button>
+            </div>
+            <div id="historyBox" class="field-stack">
+              <label
+                ><span>Дата и время <em>UTC</em></span>
+                <input type="datetime-local" id="asOf" step="60" />
+              </label>
+              <label class="inline check"
+                ><input type="checkbox" id="reviewChk" />
+                <span
+                  ><b>Полный архив</b
+                  ><small>использовать данные, появившиеся позднее</small></span
+                >
+              </label>
+            </div>
+          </section>
 
-      <button type="button" id="detailsBtn" class="details-btn">Подробности: графики, таблица, карта, источники ▾</button>
+          <section class="form-section">
+            <div class="form-section-head">
+              <span>02</span>
+              <div>
+                <b>Длительность</b
+                ><small>плановое время работы за бортом</small>
+              </div>
+            </div>
+            <div class="duration-fields">
+              <label
+                ><span>Часы</span
+                ><input type="number" id="durH" min="1" max="8" value="6"
+              /></label>
+              <div class="duration-separator">:</div>
+              <label
+                ><span>Минуты</span
+                ><input
+                  type="number"
+                  id="durM"
+                  min="0"
+                  max="55"
+                  step="5"
+                  value="30"
+              /></label>
+            </div>
+          </section>
 
-      <div id="details" class="hidden">
-        <div class="card rec" id="recCard"></div>
+          <section class="form-section">
+            <div class="form-section-head">
+              <span>03</span>
+              <div>
+                <b>Период поиска</b
+                ><small>необязательно – по умолчанию ближайшие сутки</small>
+              </div>
+            </div>
+            <div class="field-stack compact-fields">
+              <label
+                ><span>Плановое начало <em>UTC</em></span
+                ><input type="datetime-local" id="planned" step="60"
+              /></label>
+              <div class="range-fields">
+                <label
+                  ><span>Не раньше</span
+                  ><input type="datetime-local" id="earliest" step="60"
+                /></label>
+                <label
+                  ><span>Не позже</span
+                  ><input type="datetime-local" id="latest" step="60"
+                /></label>
+              </div>
+            </div>
+          </section>
 
-        <div class="card">
-          <div class="card-h">
-            <h2>Как менялась обстановка</h2>
-            <div class="legend">
-              <span><i class="c-critical"></i>стоп-фактор</span><span><i class="c-undesirable"></i>нежелательно</span>
-              <span><i class="c-acceptable"></i>без замечаний</span><span><i class="c-no_data"></i>нет данных</span>
-              <span class="muted">T — «сейчас»: сплошная линия — измерено, пунктир — прогноз, серая зона — дальше прогноза нет ·
-                клик по полосе — откуда данные</span>
+          <button type="submit" id="runBtn" class="primary">
+            <span>Рассчитать окна</span><span aria-hidden="true">→</span>
+          </button>
+          <div id="progress" class="progress hidden">
+            <div class="bar"><i></i></div>
+            <span></span>
+          </div>
+          <div id="formErr" class="err"></div>
+
+          <details>
+            <summary>Расширенные настройки</summary>
+            <label
+              >Время возвращения в шлюз, мин
+              <input type="number" id="retMin" min="0" max="240" value="30"
+            /></label>
+            <label
+              >Запас на задержку работ, мин
+              <input type="number" id="marginMin" min="0" max="240" value="60"
+            /></label>
+            <label
+              >Шаг перебора вариантов, мин
+              <input type="number" id="stepMin" min="5" max="60" value="15"
+            /></label>
+            <label
+              >Модель прогноза радиации
+              <select id="model">
+                <option value="team">
+                  наша: рост/спад на 6 ч + предупреждения SWPC
+                </option>
+                <option value="persistence">
+                  простая: «как сейчас, так и будет»
+                </option>
+                <option value="swpc_only">
+                  простая: только предупреждения SWPC
+                </option>
+              </select>
+            </label>
+            <p class="hint">
+              Проверка сбоя: отключите или «заморозьте» источник – только для
+              этого расчёта.
+            </p>
+            <div id="overrides"></div>
+          </details>
+        </form>
+
+        <section class="side-sec">
+          <h3>Прошлые расчёты</h3>
+          <ul id="runsList" class="list"></ul>
+        </section>
+      </aside>
+
+      <main>
+        <section id="empty" class="empty">
+          <div class="hero">
+            <div class="eyebrow">Система поддержки решений · ВКД</div>
+            <h1>Найдите безопасное<br />окно для выхода</h1>
+            <p class="hero-lead">
+              Система сравнит варианты начала, проверит радиационную обстановку
+              и объекты на орбите, затем объяснит рекомендацию.
+            </p>
+            <div class="hero-flow" aria-label="Этапы расчёта">
+              <span><b>01</b> Задайте условия</span><i></i
+              ><span><b>02</b> Запустите расчёт</span><i></i
+              ><span><b>03</b> Изучите рекомендацию</span>
             </div>
           </div>
-          <div id="timeline"></div>
-        </div>
 
-        <div class="card">
-          <div class="card-h">
-            <h2>Таблица вариантов</h2>
-            <div class="ctrls">
-              <label class="inline">Длительность, мин <input type="number" id="durEdit" min="60" max="480" step="15"></label>
-              <button type="button" id="durBtn">Пересчитать план</button>
-              <label class="inline"><input type="checkbox" id="hideBad"> скрыть не рекомендуемые</label>
+          <section class="system-scope" aria-label="Что анализирует система">
+            <div class="scope-head">
+              <span class="eyebrow">Контроль обстановки</span
+              ><b>Что попадёт в расчёт</b>
             </div>
+            <article>
+              <span class="scope-index">A</span>
+              <div>
+                <h3>Солнечная активность</h3>
+                <p>Потоки частиц, магнитная обстановка и положение станции.</p>
+              </div>
+              <span class="scope-state">GOES · SWPC</span>
+            </article>
+            <article>
+              <span class="scope-index">B</span>
+              <div>
+                <h3>Орбитальные объекты</h3>
+                <p>Опасные сближения, космический мусор и запас на возврат.</p>
+              </div>
+              <span class="scope-state">TLE · SGP4</span>
+            </article>
+            <article>
+              <span class="scope-index">C</span>
+              <div>
+                <h3>Полнота данных</h3>
+                <p>
+                  Свежесть источников учитывается в надёжности рекомендации.
+                </p>
+              </div>
+              <span class="scope-state">7 источников</span>
+            </article>
+          </section>
+
+          <section class="demo-section">
+            <div class="demo-heading">
+              <div>
+                <span class="eyebrow">Быстрый старт</span>
+                <h2>Проверить на готовом сценарии</h2>
+              </div>
+              <p>Выберите событие – параметры подставятся автоматически.</p>
+            </div>
+            <div class="examples" id="examples">
+              <button type="button" data-preset="0608">
+                <span class="example-date">08.06.24 · 03:00</span
+                ><b>Начало солнечной бури</b
+                ><span
+                  >Система выбирает окно на фоне растущего потока частиц.</span
+                ><i>→</i>
+              </button>
+              <button type="button" data-preset="0510">
+                <span class="example-date">10.05.24 · 21:00</span
+                ><b>Экстремальная обстановка</b
+                ><span>Частицы от Солнца и сильная магнитная буря.</span
+                ><i>→</i>
+              </button>
+              <button type="button" data-preset="0526">
+                <span class="example-date">26.05.24 · 00:00</span
+                ><b>Сближение с объектом</b
+                ><span
+                  >Спокойный день, но план пересекается с орбитальным
+                  риском.</span
+                ><i>→</i>
+              </button>
+              <button type="button" data-preset="0511">
+                <span class="example-date">11.05.24 · архив</span
+                ><b>Разбор по факту</b
+                ><span>Сравнение рекомендации с полным архивом наблюдений.</span
+                ><i>→</i>
+              </button>
+              <button type="button" data-preset="1009">
+                <span class="example-date">09.10.24 · 06:00</span
+                ><b>Контрольное событие</b
+                ><span>Проверка алгоритма вне основного периода.</span><i>→</i>
+              </button>
+            </div>
+          </section>
+
+          <footer class="workspace-note">
+            <b>Важно:</b> оценка описывает внешние условия, а не дозу облучения.
+            Решение о выходе принимают специалисты.
+          </footer>
+        </section>
+
+        <section id="result" class="hidden">
+          <div id="planBanner" class="banner hidden"></div>
+          <div class="card answer" id="answer"></div>
+
+          <div class="card">
+            <div class="card-h">
+              <h2>Все варианты начала</h2>
+              <div class="legend">
+                <span><i class="c-best"></i>лучший</span
+                ><span><i class="c-acceptable"></i>хороший</span>
+                <span><i class="c-undesirable"></i>хуже</span
+                ><span><i class="c-critical"></i>не рекомендуется</span>
+                <span><i class="c-no_data"></i>нет данных</span>
+              </div>
+            </div>
+            <div id="strip" class="strip"></div>
+            <div id="stripAxis" class="strip-axis"></div>
+            <div id="variant" class="variant"></div>
           </div>
-          <div class="tablewrap"><table id="winTable" class="tbl"></table></div>
-        </div>
 
-        <div class="tabs" id="tabs">
-          <button type="button" data-tab="map" class="on">Где летит станция</button>
-          <button type="button" data-tab="sources">Данные и источники</button>
-          <button type="button" data-tab="verify">Что было на самом деле</button>
-          <button type="button" data-tab="export">Сохранить</button>
-        </div>
-        <div class="card tabpane" id="tab-map"><div id="map"></div><p class="hint" id="mapHint"></p></div>
-        <div class="card tabpane hidden" id="tab-sources"></div>
-        <div class="card tabpane hidden" id="tab-verify"></div>
-        <div class="card tabpane hidden" id="tab-export"></div>
+          <button type="button" id="detailsBtn" class="details-btn">
+            Подробности: графики, таблица, карта, источники ▾
+          </button>
+
+          <div id="details" class="hidden">
+            <div class="card rec" id="recCard"></div>
+
+            <div class="card">
+              <div class="card-h">
+                <h2>Как менялась обстановка</h2>
+                <div class="legend">
+                  <span><i class="c-critical"></i>стоп-фактор</span
+                  ><span><i class="c-undesirable"></i>нежелательно</span>
+                  <span><i class="c-acceptable"></i>без замечаний</span
+                  ><span><i class="c-no_data"></i>нет данных</span>
+                  <span class="muted"
+                    >T – «сейчас»: сплошная линия – измерено, пунктир – прогноз,
+                    серая зона – дальше прогноза нет · клик по полосе – откуда
+                    данные</span
+                  >
+                </div>
+              </div>
+              <div id="timeline"></div>
+            </div>
+
+            <div class="card">
+              <div class="card-h">
+                <h2>Таблица вариантов</h2>
+                <div class="ctrls">
+                  <label class="inline"
+                    >Длительность, мин
+                    <input
+                      type="number"
+                      id="durEdit"
+                      min="60"
+                      max="480"
+                      step="15"
+                  /></label>
+                  <button type="button" id="durBtn">Пересчитать план</button>
+                  <label class="inline"
+                    ><input type="checkbox" id="hideBad" /> скрыть не
+                    рекомендуемые</label
+                  >
+                </div>
+              </div>
+              <div class="tablewrap">
+                <table id="winTable" class="tbl"></table>
+              </div>
+            </div>
+
+            <div class="tabs" id="tabs">
+              <button type="button" data-tab="map" class="on">
+                Где летит станция
+              </button>
+              <button type="button" data-tab="sources">
+                Данные и источники
+              </button>
+              <button type="button" data-tab="verify">
+                Что было на самом деле
+              </button>
+              <button type="button" data-tab="export">Сохранить</button>
+            </div>
+            <div class="card tabpane" id="tab-map">
+              <div id="map"></div>
+              <p class="hint" id="mapHint"></p>
+            </div>
+            <div class="card tabpane hidden" id="tab-sources"></div>
+            <div class="card tabpane hidden" id="tab-verify"></div>
+            <div class="card tabpane hidden" id="tab-export"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="drawer" class="drawer hidden" aria-hidden="true">
+      <div class="drawer-h">
+        <h3 id="drawerTitle">Подробности</h3>
+        <button type="button" id="drawerClose">×</button>
       </div>
-    </section>
-  </main>
-</div>
-
-<div id="drawer" class="drawer hidden" aria-hidden="true">
-  <div class="drawer-h"><h3 id="drawerTitle">Подробности</h3><button type="button" id="drawerClose">×</button></div>
-  <div id="drawerBody"></div>
-</div>
-<div id="toasts" class="toasts"></div>
-<script src="/static/app.js"></script>
-</body>
+      <div id="drawerBody"></div>
+    </div>
+    <div id="toasts" class="toasts"></div>
+    <script src="/static/app.js"></script>
+  </body>
 </html>
