@@ -36,6 +36,10 @@ def _window_stats(mech: MechanismTimeline, mask: np.ndarray, step_min: float) ->
     known = mech.confidence[mask][cls != NO_DATA]
     out = {"minutes": minutes, "worst": worst, "confidence": min_confidence(known),
            "reasons": {k: round(v, 1) for k, v in reasons.most_common()}}
+    if mech.conf_reason is not None:
+        # почему у окна такая уверенность: причины точек с минимальной уверенностью
+        weakest = (cls != NO_DATA) & (mech.confidence[mask] == out["confidence"])
+        out["confidence_reasons"] = list(dict.fromkeys(r for r in mech.conf_reason[mask][weakest] if r))
     if "j_iss" in mech.series:
         # оценка потока выше порога обрезания, накопленного за окно (pfu·мин) — мера для различения окон;
         # минуты, где поток не оценён количественно (только вероятность), считаются отдельно и не дают «нуля»
