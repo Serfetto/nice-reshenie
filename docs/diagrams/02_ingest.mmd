@@ -1,0 +1,23 @@
+flowchart TB
+    START(["Старт сервиса ingest"]) --> BOOT["Проверка архива:<br/>каких дней не хватает?"]
+    BOOT --> BF["Догрузка недостающих дней<br/>(первый запуск ~15–20 мин)"]
+    START --> SCHED["Планировщик: у каждого источника<br/>своё расписание (GOES — 5 мин,<br/>сообщения — 3 мин, каталог — 6 ч …)"]
+    SCHED --> GAP{{"Сервис был<br/>выключен?"}}
+    GAP -- да --> CATCH["Догрузить пропуск<br/>за время простоя (до 90 сут)"]
+    GAP -- нет --> FETCH
+    CATCH --> FETCH
+    BF --> FETCH["<b>fetch</b>: скачать файл как есть"]
+    FETCH --> HASH{{"Файл изменился?<br/>(сравнение хеша SHA-256)"}}
+    HASH -- нет --> LOG["Журнал: «без изменений»"]
+    HASH -- да --> SAVE["Сохранить исходный файл<br/>в data/raw (навсегда)"]
+    SAVE --> PARSE["<b>parse</b>: разобрать в единые записи<br/>значение · единицы · когда опубликовано ·<br/>ссылка на исходный файл"]
+    PARSE --> DB[("База данных")]
+    DB --> STATUS["Статус источника:<br/>в порядке / устарел / ошибка / заморожен"]
+    DB --> NOTIFY["Сигнал «пришли новые данные»<br/>для слежения за окнами"]
+
+    classDef step fill:#e8f0fb,stroke:#2a78d6,color:#0b0b0b
+    classDef dec fill:#fff4e5,stroke:#eda100,color:#0b0b0b
+    classDef out fill:#e6f6ee,stroke:#1baf7a,color:#0b0b0b
+    class START,BOOT,BF,SCHED,CATCH,FETCH,SAVE,PARSE,LOG step
+    class GAP,HASH dec
+    class STATUS,NOTIFY,DB out

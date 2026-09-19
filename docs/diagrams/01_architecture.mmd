@@ -1,0 +1,44 @@
+flowchart TB
+    subgraph EXT["Открытые источники данных"]
+        SWPC["NOAA SWPC<br/>протоны GOES, Kp,<br/>сообщения, прогнозы"]
+        NCEI["NCEI, GFZ<br/>архивы 2024 г."]
+        ST["Space-Track, CelesTrak<br/>орбита МКС и каталог<br/>объектов"]
+        MEO["NASA MEO<br/>прогноз метеорных<br/>потоков"]
+    end
+
+    subgraph SRV["Сервер (Docker Compose)"]
+        ING["<b>ingest</b> · порт 8001<br/>сбор данных по расписанию"]
+        RAW[["<b>data/raw</b><br/>исходные файлы<br/>(не перезаписываются)"]]
+        DB[("<b>PostgreSQL</b><br/>записи, орбиты,<br/>расчёты, оповещения")]
+        ASM["<b>assessment</b> · порт 8002<br/>расчёт окон, сверка,<br/>слежение, Telegram-бот"]
+        REP["<b>report</b> · порт 8000 (наружу)<br/>веб-консоль, отчёты, ZIP,<br/>поток оповещений"]
+    end
+
+    subgraph USR["Кто пользуется"]
+        AN["Аналитик<br/>группы планирования"]
+        BOSS["Руководитель<br/>(краткая сводка)"]
+        TG["Экипаж / дежурные<br/>(Telegram, строка статуса)"]
+    end
+
+    SWPC --> ING
+    NCEI --> ING
+    ST --> ING
+    MEO --> ING
+    ING --> RAW
+    ING --> DB
+    DB -. "сигнал «новые данные»" .-> ASM
+    DB <--> ASM
+    ASM <--> REP
+    ING <-. "статусы, «обновить»" .-> REP
+    REP <--> AN
+    REP --> BOSS
+    ASM --> TG
+
+    classDef svc fill:#e8f0fb,stroke:#2a78d6,stroke-width:1.5px,color:#0b0b0b
+    classDef store fill:#fff4e5,stroke:#eda100,stroke-width:1.5px,color:#0b0b0b
+    classDef ext fill:#f4f4f2,stroke:#898781,color:#0b0b0b
+    classDef user fill:#e6f6ee,stroke:#1baf7a,stroke-width:1.5px,color:#0b0b0b
+    class ING,ASM,REP svc
+    class DB,RAW store
+    class SWPC,NCEI,ST,MEO ext
+    class AN,BOSS,TG user

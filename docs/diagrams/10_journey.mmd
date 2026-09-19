@@ -1,0 +1,20 @@
+flowchart TB
+    subgraph ROW1[" "]
+        direction LR
+        S1["<b>1. Задать условия</b><br/>«Сейчас» или прошлая дата,<br/>длительность выхода,<br/>период поиска"] --> S2["<b>2. Рассчитать</b><br/>прогресс: данные → орбита →<br/>частицы → мусор → варианты"]
+        S2 --> S3["<b>3. Прочитать ответ</b><br/>лучшее время начала и почему,<br/>полоса всех вариантов"]
+    end
+    subgraph ROW2[" "]
+        direction LR
+        S4["<b>4. Проверить основания</b><br/>графики, таблица, карта,<br/>исходные данные"] --> S5["<b>5. Сохранить и передать</b><br/>сводка руководителю,<br/>отчёт, ZIP, строка статуса"]
+        S5 --> S6["<b>6. Следить</b><br/>оповещения в консоли,<br/>браузере и Telegram"]
+        S4 -. "прошлая дата" .-> S7["<b>Сверка с фактом</b><br/>«Что было на самом деле»"]
+    end
+    ROW1 --> ROW2
+
+    classDef s fill:#e8f0fb,stroke:#2a78d6,color:#0b0b0b
+    classDef v fill:#e6f6ee,stroke:#1baf7a,color:#0b0b0b
+    class S1,S2,S3,S4,S5,S6 s
+    class S7 v
+    style ROW1 fill:none,stroke:none
+    style ROW2 fill:none,stroke:none

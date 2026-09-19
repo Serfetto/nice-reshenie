@@ -1,0 +1,32 @@
+flowchart TB
+    subgraph L1["Слой 1 · Измерение"]
+        GOES["Поток протонов GOES<br/>≥10…≥500 МэВ<br/>(геостационар, 36 000 км)"]
+        KP["Индекс магнитной<br/>бури Kp"]
+    end
+    subgraph L2["Слой 2 · Условие на орбите МКС"]
+        RC["Жёсткость обрезания Rc<br/>в точке МКС<br/>(Штёрмер + сдвиг по Kp)"]
+        JISS["J_iss — поток, который<br/>долетает до станции"]
+        SAA["Проход ЮАА<br/>|B| < 21 000 нТл"]
+    end
+    subgraph L3["Слой 3 · Последствие для выхода"]
+        C1["<b>Стоп-фактор</b><br/>S3+ (≥ 1000 pfu)<br/>или J_iss ≥ 10 pfu"]
+        C2["<b>Нежелательно</b><br/>J_iss ≥ 1 pfu, идёт событие S1+<br/>или проход ЮАА"]
+        C3["<b>Без замечаний</b>"]
+        C4["<b>Нет данных</b><br/>никогда не считается<br/>«хорошо»"]
+    end
+    KP --> RC --> JISS
+    GOES --> JISS
+    JISS --> C1 & C2 & C3
+    SAA --> C2
+    GOES -. "нет измерений<br/>и прогноза" .-> C4
+
+    classDef crit fill:#fbe3e3,stroke:#d03b3b,color:#0b0b0b
+    classDef und fill:#fff4e5,stroke:#eda100,color:#0b0b0b
+    classDef ok fill:#e6f6ee,stroke:#0ca30c,color:#0b0b0b
+    classDef nd fill:#eeeeec,stroke:#898781,color:#0b0b0b
+    classDef base fill:#e8f0fb,stroke:#2a78d6,color:#0b0b0b
+    class C1 crit
+    class C2 und
+    class C3 ok
+    class C4 nd
+    class GOES,KP,RC,JISS,SAA base

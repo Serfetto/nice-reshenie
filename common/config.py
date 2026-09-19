@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
 
-# 0.2.0 — метеорные потоки в MMOD, исключение пристыкованных кораблей, причины уверенности
-ALGORITHM_VERSION = "0.2.0"
+# 0.0.1 — метеорные потоки в MMOD, исключение пристыкованных кораблей, причины уверенности
+ALGORITHM_VERSION = "0.0.1"
 
 DATA_DIR = Path(os.getenv("DATA_DIR", str(ROOT / "data")))
 RAW_DIR = DATA_DIR / "raw"
