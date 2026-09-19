@@ -136,6 +136,8 @@ runs = Table(
     Column("result", JSON),
     Column("error", Text),
     Column("algorithm_version", String(32)),
+    Column("summary", JSON),                    # краткий итог для списка сохранённых расчётов
+    Column("label", Text),                      # название, данное пользователем
 )
 
 
@@ -211,7 +213,7 @@ def get_engine(url: str | None = None) -> Engine:
 
 
 # колонки, добавленные после первой версии схемы: create_all не меняет существующие таблицы
-_ADDED_COLUMNS = {"source_status": {"paused_at": "TIMESTAMP"}}
+_ADDED_COLUMNS = {"source_status": {"paused_at": "TIMESTAMP"}, "runs": {"summary": "JSON", "label": "TEXT"}}
 
 
 def _add_missing_columns(engine: Engine) -> None:

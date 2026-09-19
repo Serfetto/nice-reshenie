@@ -60,12 +60,43 @@ def _progress_writer(run_id: str):
     return write
 
 
+# известны заранее (геометрия орбиты, годовой прогноз) — сами по себе не делают вариант неблагоприятным
+BACKGROUND_REASONS = {"saa", "meteor_shower"}
+
+
+def summarize(result: dict) -> dict:
+    """Краткий итог расчёта для списка сохранённых: ответ, надёжность, лучший и плановый варианты."""
+    wins = {w["id"]: w for w in result.get("windows") or []}
+    rec = result.get("recommendation") or {}
+
+    def brief(w: dict | None) -> dict | None:
+        if w is None:
+            return None
+        return {"id": w["id"], "start": w["start"], "end": w["end"], "status": w["status"],
+                "worst": {m: st["worst"] for m, st in w["mechanisms"].items()}}
+
+    best = wins.get(rec.get("window"))
+    adverse = bool(best) and any(st["worst"] == "undesirable" and set(st.get("reasons") or {}) - BACKGROUND_REASONS
+                                 for st in best["mechanisms"].values())
+    counts: dict[str, int] = {}
+    for w in wins.values():
+        counts[w["status"]] = counts.get(w["status"], 0) + 1
+    return {"mode": result.get("mode"), "as_of": result.get("as_of"),
+            "duration_min": (result.get("search") or {}).get("duration_min"),
+            "rec_status": rec.get("status"), "confidence": rec.get("confidence"), "adverse": adverse,
+            "best": brief(best), "planned": brief(wins.get(result.get("planned"))),
+            "n_windows": len(wins), "counts": counts,
+            "source_issues": [s["source"] for s in result.get("sources") or [] if s.get("state") not in ("ok", "frozen")],
+            "reconstruction": bool(result.get("reconstruction"))}
+
+
 def _run_assessment(run_id: str, req: RunRequest) -> None:
     try:
         _set(run_id, status="running", progress={"stage": "start", "pct": 1})
         result = execute(req, progress=_progress_writer(run_id))
         result["run_id"] = run_id
-        _set(run_id, status="done", result=result, finished_at=utcnow(), progress={"stage": "done", "pct": 100})
+        _set(run_id, status="done", result=result, summary=summarize(result), finished_at=utcnow(),
+             progress={"stage": "done", "pct": 100})
     except RunError as e:
         _set(run_id, status="failed", error=str(e), finished_at=utcnow())
     except Exception as e:

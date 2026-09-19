@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 
 from fastapi import Body, FastAPI, HTTPException, Query
-from sqlalchemy import select, update
+from sqlalchemy import delete, or_, select, update
 
 from common import config
 from common.db import alerts, get_engine, init_db, runs, watches
@@ -64,7 +64,7 @@ def create_run(req: RunRequest):
 def _row_dict(row, include: set[str] | None) -> dict:
     d = {"run_id": row.id, "kind": row.kind, "parent_id": row.parent_id, "status": row.status,
          "created_at": iso(row.created_at), "finished_at": iso(row.finished_at), "progress": row.progress,
-         "request": row.request, "error": row.error, "algorithm_version": row.algorithm_version}
+         "request": row.request, "error": row.error, "algorithm_version": row.algorithm_version, "label": row.label}
     if row.result is not None:
         res = row.result
         if include is not None:
@@ -85,14 +85,63 @@ def get_run(run_id: str, include: str | None = Query(None, description="summary:
 
 
 @app.get("/runs")
-def list_runs(limit: int = Query(20, le=200), parent_id: str | None = None):
-    q = select(runs.c.id, runs.c.kind, runs.c.parent_id, runs.c.status, runs.c.created_at, runs.c.request, runs.c.error)
+def list_runs(limit: int = Query(20, le=200), offset: int = Query(0, ge=0), parent_id: str | None = None,
+              kind: str | None = None, mode: str | None = None):
+    """Сохранённые расчёты, новые первыми, с кратким итогом (без тяжёлых полей результата)."""
+    q = select(runs.c.id, runs.c.kind, runs.c.parent_id, runs.c.status, runs.c.created_at, runs.c.finished_at,
+               runs.c.request, runs.c.error, runs.c.summary, runs.c.label, runs.c.algorithm_version)
     if parent_id:
         q = q.where(runs.c.parent_id == parent_id)
+    if kind:
+        q = q.where(runs.c.kind == kind)
     with get_engine().connect() as conn:
-        rows = conn.execute(q.order_by(runs.c.created_at.desc()).limit(limit)).fetchall()
+        rows = conn.execute(q.order_by(runs.c.created_at.desc())).fetchall() if mode else \
+            conn.execute(q.order_by(runs.c.created_at.desc()).offset(offset).limit(limit)).fetchall()
+        if mode:  # режим лежит в JSON запроса — фильтр здесь, одинаково для SQLite и PostgreSQL
+            rows = [r for r in rows if (r.request or {}).get("mode") == mode][offset:offset + limit]
+        ids = [r.id for r in rows]
+        verified = {p for (p,) in conn.execute(select(runs.c.parent_id).where(
+            runs.c.parent_id.in_(ids), runs.c.kind == "verify", runs.c.status == "done"))} if ids else set()
+    summaries = _ensure_summaries([r for r in rows if r.summary is None and r.kind == "assessment" and r.status == "done"])
     return [{"run_id": r.id, "kind": r.kind, "parent_id": r.parent_id, "status": r.status,
-             "created_at": iso(r.created_at), "request": r.request, "error": r.error} for r in rows]
+             "created_at": iso(r.created_at), "finished_at": iso(r.finished_at), "request": r.request,
+             "error": r.error, "label": r.label, "algorithm_version": r.algorithm_version,
+             "summary": r.summary or summaries.get(r.id), "verified": r.id in verified} for r in rows]
+
+
+def _ensure_summaries(rows) -> dict[str, dict]:
+    """Итог для расчётов, сохранённых до появления колонки summary: считается один раз и записывается."""
+    out = {}
+    for r in rows:
+        with get_engine().begin() as conn:
+            res = conn.execute(select(runs.c.result).where(runs.c.id == r.id)).scalar()
+            if res:
+                out[r.id] = jobs.summarize(res)
+                conn.execute(update(runs).where(runs.c.id == r.id).values(summary=out[r.id]))
+    return out
+
+
+@app.delete("/runs/{run_id}")
+def delete_run(run_id: str):
+    """Удалить сохранённый расчёт вместе с его сверками с фактом."""
+    with get_engine().begin() as conn:
+        row = conn.execute(select(runs.c.status).where(runs.c.id == run_id)).first()
+        if row is None:
+            raise HTTPException(404, "Нет такого расчёта")
+        if row.status in ("queued", "running"):
+            raise HTTPException(409, "Расчёт ещё идёт — удалить можно после завершения")
+        n = conn.execute(delete(runs).where(or_(runs.c.id == run_id, runs.c.parent_id == run_id))).rowcount
+    return {"run_id": run_id, "deleted": n}
+
+
+@app.post("/runs/{run_id}/label")
+def label_run(run_id: str, body: dict = Body(..., examples=[{"label": "ВКД-1, план на 08.06"}])):
+    label = (body.get("label") or "").strip()[:200] or None
+    with get_engine().begin() as conn:
+        res = conn.execute(update(runs).where(runs.c.id == run_id).values(label=label))
+    if not res.rowcount:
+        raise HTTPException(404, "Нет такого расчёта")
+    return {"run_id": run_id, "label": label}
 
 
 @app.post("/runs/{run_id}/verify", status_code=202)
@@ -151,16 +200,33 @@ def stop_watch(wid: str):
 
 
 @app.get("/alerts")
-def list_alerts(watch_id: str | None = None, since_id: int = 0, limit: int = Query(100, le=500)):
+def list_alerts(watch_id: str | None = None, since_id: int = 0, limit: int = Query(100, le=500),
+                newest: bool = Query(False, description="последние limit сообщений (по убыванию id)"),
+                severity: str | None = None, unacked: bool = False):
     q = select(alerts).where(alerts.c.id > since_id)
     if watch_id:
         q = q.where(alerts.c.watch_id == watch_id)
+    if severity:
+        q = q.where(alerts.c.severity == severity)
+    if unacked:
+        q = q.where(alerts.c.ack_at.is_(None))
     with get_engine().connect() as conn:
-        rows = conn.execute(q.order_by(alerts.c.id).limit(limit)).fetchall()
+        rows = conn.execute(q.order_by(alerts.c.id.desc() if newest else alerts.c.id).limit(limit)).fetchall()
     return [{"id": a.id, "watch_id": a.watch_id, "created_at": iso(a.created_at), "as_of": iso(a.as_of),
              "severity": a.severity, "kind": a.kind, "mechanism": a.mechanism, "message": a.message,
              "details": a.details, "data_latest_issued": iso(a.data_latest_issued), "data_lag_s": a.data_lag_s,
              "delivered": a.delivered, "ack_at": iso(a.ack_at)} for a in rows]
+
+
+@app.post("/alerts/ack-all")
+def ack_all(watch_id: str | None = None):
+    """Отметить принятыми все непринятые предупреждения (информационные принимать не нужно)."""
+    q = update(alerts).where(alerts.c.ack_at.is_(None), alerts.c.severity != "info")
+    if watch_id:
+        q = q.where(alerts.c.watch_id == watch_id)
+    with get_engine().begin() as conn:
+        n = conn.execute(q.values(ack_at=utcnow())).rowcount
+    return {"acknowledged": n}
 
 
 @app.post("/alerts/{alert_id}/ack")

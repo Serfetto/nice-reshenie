@@ -10,15 +10,20 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand">ВКД <span>· когда лучше выходить в открытый космос</span></div>
-  <div id="modeBadge" class="badge hidden"></div>
+  <a class="brand" href="#calc">ВКД <span>· когда лучше выходить в открытый космос</span></a>
+  <nav class="nav" id="nav">
+    <a href="#calc" data-page="calc">Расчёт</a>
+    <a href="#sources" data-page="sources">Источники <span id="srcCount" class="count hidden"></span></a>
+    <a href="#alerts" data-page="alerts">Оповещения <span id="bellCount" class="count">0</span></a>
+    <a href="#saved" data-page="saved">Сохранения</a>
+  </nav>
   <div class="spacer"></div>
   <div id="srcChips" class="chips" title="Состояние источников данных"></div>
   <button id="helpBtn" class="bell" type="button">Как пользоваться</button>
-  <button id="bell" class="bell" type="button">Предупреждения <span id="bellCount" class="count">0</span></button>
   <div id="clock" class="clock"></div>
 </header>
 
+<div class="page" id="page-calc">
 <div class="layout">
   <aside class="side">
     <form id="form" autocomplete="off">
@@ -82,7 +87,7 @@
     </section>
 
     <section class="side-sec">
-      <h3>Прошлые расчёты</h3>
+      <h3>Последние расчёты <a href="#saved" class="side-link">все сохранения →</a></h3>
       <ul id="runsList" class="list"></ul>
     </section>
   </aside>
@@ -110,6 +115,7 @@
     </section>
 
     <section id="result" class="hidden">
+      <div class="run-meta" id="runMeta"></div>
       <div id="planBanner" class="banner hidden"></div>
       <div class="card answer" id="answer"></div>
 
@@ -171,6 +177,83 @@
     </section>
   </main>
 </div>
+</div>
+
+<div class="page page-wide hidden" id="page-sources">
+  <div class="page-h">
+    <div>
+      <h1>Источники данных</h1>
+      <p class="hint">Всё, что сервис скачивает и разбирает. Каждый источник опрашивается по своему расписанию;
+        здесь можно обновить его сейчас, не дожидаясь планового опроса.</p>
+    </div>
+    <div class="page-actions">
+      <button type="button" id="refreshAllBtn" class="btn primary big">Обновить все</button>
+    </div>
+  </div>
+  <div id="srcSummary" class="stats"></div>
+  <div id="bootBox"></div>
+  <div id="srcGroups"><p class="muted">загрузка…</p></div>
+</div>
+
+<div class="page page-wide hidden" id="page-alerts">
+  <div class="page-h">
+    <div>
+      <h1>Оповещения</h1>
+      <p class="hint">Система пересчитывает выбранное время выхода и присылает сообщение, когда обстановка меняется:
+        появился стоп-фактор, стало хуже, пропали данные, стало лучше. Поставить выход на отслеживание — кнопкой
+        «Следить…» под ответом в разделе «Расчёт».</p>
+    </div>
+    <div class="page-actions">
+      <button type="button" id="notifBtn" class="btn hidden">Включить уведомления браузера</button>
+      <button type="button" id="ackAllBtn" class="btn">Принять все</button>
+    </div>
+  </div>
+  <div id="alertStats" class="stats"></div>
+  <div class="cols">
+    <section>
+      <h2 class="sec-h">За чем слежу</h2>
+      <div id="watchList"></div>
+    </section>
+    <section>
+      <div class="sec-h">
+        <h2>Сообщения</h2>
+        <div class="ctrls">
+          <div class="seg four" id="sevSeg">
+            <button type="button" data-sev="" class="on">все</button>
+            <button type="button" data-sev="critical">стоп-факторы</button>
+            <button type="button" data-sev="warning">предупреждения</button>
+            <button type="button" data-sev="info">инфо</button>
+          </div>
+          <label class="inline"><input type="checkbox" id="unackedChk"> только непринятые</label>
+        </div>
+      </div>
+      <div id="watchFilter"></div>
+      <div id="alertFeed"></div>
+    </section>
+  </div>
+</div>
+
+<div class="page page-wide hidden" id="page-saved">
+  <div class="page-h">
+    <div>
+      <h1>Сохранённые расчёты</h1>
+      <p class="hint">Каждый расчёт сохраняется сам: запрос, данные на момент расчёта, ответ и версия алгоритма.
+        Его можно открыть заново, назвать, скачать отчёт или удалить.</p>
+    </div>
+  </div>
+  <div class="ctrls filters">
+    <div class="seg four" id="savedSeg">
+      <button type="button" data-mode="" class="on">все</button>
+      <button type="button" data-mode="now">сейчас</button>
+      <button type="button" data-mode="replay">прошлая дата</button>
+      <button type="button" data-mode="review">разбор</button>
+    </div>
+    <input type="search" id="savedSearch" placeholder="поиск по названию или дате, например 08.06">
+    <span id="savedCount" class="muted"></span>
+  </div>
+  <div class="tablewrap tall"><table id="savedTable" class="tbl saved"></table></div>
+  <button type="button" id="savedMore" class="btn more hidden">Показать ещё</button>
+</div>
 
 <div id="drawer" class="drawer hidden" aria-hidden="true">
   <div class="drawer-h"><h3 id="drawerTitle">Подробности</h3><button type="button" id="drawerClose">×</button></div>
@@ -178,5 +261,6 @@
 </div>
 <div id="toasts" class="toasts"></div>
 <script src="/static/app.js"></script>
+<script src="/static/pages.js"></script>
 </body>
 </html>

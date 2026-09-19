@@ -8,38 +8,40 @@ import logging
 import os
 import threading
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from common import config
 from common.db import elements, get_engine, init_db, messages, raw_files, records
 from common.freshness import sources_overview
-from common.timeutil import parse_iso
+from common.timeutil import iso, parse_iso, utcnow
 from services.ingest import bootstrap, registry
 from services.ingest.store import set_paused
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
+_sched = None  # планировщик опроса — для «следующее обновление» в консоли
 EXPORT_TABLES = {"records": records, "messages": messages, "elements": elements, "raw_files": raw_files}
 _TIME_COL = {"records": "valid_from", "messages": "issued_at", "elements": "epoch", "raw_files": "fetched_at"}
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    global _sched
     init_db()
-    sched = None
     if os.getenv("INGEST_SCHEDULER", "1") == "1":
         from services.ingest.scheduler import build_scheduler
-        sched = build_scheduler()
-        sched.start()
+        _sched = build_scheduler()
+        _sched.start()
     if os.getenv("INGEST_BOOTSTRAP", "1") == "1":
         bootstrap.start_background()  # догрузка архива: пустая БД — весь период, иначе только недостающие дни
     yield
-    if sched:
-        sched.shutdown(wait=False)
+    if _sched:
+        _sched.shutdown(wait=False)
+        _sched = None
 
 
 app = FastAPI(title="ingest — сбор данных", lifespan=lifespan)
@@ -53,9 +55,82 @@ def health():
 
 
 @app.get("/sources")
-def list_sources():
+def list_sources(detail: bool = False):
+    """Состояние источников. detail=1 — для раздела «Источники» консоли: описание, адреса,
+    следующий плановый опрос, объём сохранённого."""
     with get_engine().connect() as conn:
-        return sources_overview(conn)
+        out = sources_overview(conn)
+        stats = _source_stats(conn) if detail else {}
+    for s in out:
+        s["refresh"] = REFRESH.get(s["source"])
+        if not detail:
+            continue
+        cfg = config.source_cfg(s["source"])
+        adapter = registry.ADAPTERS.get(s["source"])
+        job = _sched.get_job(s["source"]) if _sched else None
+        s.update({k: cfg.get(k) for k in ("group", "provider", "what", "used_for", "event_driven")})
+        s["urls"] = _source_urls(cfg)
+        s["has_live"] = bool(adapter and adapter.has_live)
+        s["has_backfill"] = bool(adapter and adapter.has_backfill)
+        s["next_run"] = iso(job.next_run_time.astimezone(timezone.utc).replace(tzinfo=None)) \
+            if job and job.next_run_time else None
+        s["stats"] = stats.get(s["source"], {})
+    return out
+
+
+def _source_urls(cfg: dict) -> list[dict]:
+    out = []
+    for key, title in (("live_url", "текущие данные"), ("endpoint", "текущие данные"), ("archive_url", "архив"),
+                       ("meta_url", "описание выпуска"), ("flux_url", "почасовой поток"), ("doc_url", "текст прогноза")):
+        if cfg.get(key):
+            out.append({"title": title, "url": cfg[key]})
+    for hours, url in (cfg.get("catchup_urls") or {}).items():
+        out.append({"title": f"догрузка пропуска до {hours} ч", "url": url})
+    return out
+
+
+def _source_stats(conn) -> dict[str, dict]:
+    """Сколько сохранено по каждому источнику: сырые файлы и разобранные записи."""
+    out: dict[str, dict] = {}
+    for r in conn.execute(select(raw_files.c.source, func.count(), func.sum(raw_files.c.size),
+                                 func.max(raw_files.c.fetched_at)).group_by(raw_files.c.source)):
+        out[r[0]] = {"raw_files": r[1], "raw_bytes": int(r[2] or 0), "last_fetch": iso(r[3])}
+    counts = dict(conn.execute(select(records.c.source, func.count()).group_by(records.c.source)).fetchall())
+    counts.update(conn.execute(select(messages.c.source, func.count()).group_by(messages.c.source)).fetchall())
+    is_iss = elements.c.norad_id == ISS_NORAD
+    for src, iss, n in conn.execute(select(elements.c.source, is_iss, func.count()).group_by(elements.c.source, is_iss)):
+        name = "iss_celestrak" if src == "celestrak" else "iss_spacetrack" if iss else "catalog_spacetrack"
+        counts[name] = counts.get(name, 0) + n
+    for name, n in counts.items():
+        out.setdefault(name, {})["items"] = n
+    return out
+
+
+# ---------- ручное обновление из консоли ----------
+
+REFRESH: dict[str, dict] = {}  # источник -> {state: running|done|error, started_at, finished_at, new_items, errors}
+_refresh_lock = threading.Lock()
+
+
+def _refresh_worker(name: str, force: bool) -> None:
+    try:
+        res = registry.run_live(get_engine(), name, force=force)
+        st = {"state": "error" if res.errors and not res.files else "done", "new_items": res.new_items,
+              "files": res.files, "errors": res.errors[:5], "skipped": bool(res.skipped)}
+    except Exception as e:
+        st = {"state": "error", "new_items": 0, "files": 0, "errors": [f"{type(e).__name__}: {e}"]}
+    with _refresh_lock:
+        REFRESH[name] = {**REFRESH.get(name, {}), **st, "finished_at": iso(utcnow())}
+
+
+def _start_refresh(name: str, force: bool = True) -> bool:
+    """Обновление источника в фоне. False — уже идёт."""
+    with _refresh_lock:
+        if (REFRESH.get(name) or {}).get("state") == "running":
+            return False
+        REFRESH[name] = {"state": "running", "started_at": iso(utcnow()), "finished_at": None}
+    threading.Thread(target=_refresh_worker, args=(name, force), name=f"refresh-{name}", daemon=True).start()
+    return True
 
 
 def _check_source(name: str) -> None:
@@ -75,12 +150,28 @@ def bootstrap_rerun():
     return {"started": bootstrap.start_background(), "state": bootstrap.STATE.get("state")}
 
 
+@app.post("/sources/refresh-all", status_code=202)
+def refresh_all():
+    """Обновить все источники с живыми данными. Замороженные пропускаются: заморозка — проверка сбоя для всех."""
+    with get_engine().connect() as conn:
+        paused = {s["source"] for s in sources_overview(conn) if s["paused"]}
+    out = {"started": [], "already_running": [], "skipped_paused": []}
+    for name, adapter in registry.ADAPTERS.items():
+        if not adapter.has_live:
+            continue
+        if name in paused:
+            out["skipped_paused"].append(name)
+        else:
+            out["started" if _start_refresh(name, force=False) else "already_running"].append(name)
+    return out
+
+
 @app.post("/sources/{name}/refresh", status_code=202)
 def refresh(name: str):
+    """Обновить один источник сейчас (замороженный — тоже, один раз)."""
     _check_source(name)
-    threading.Thread(target=registry.run_live, args=(get_engine(), name), kwargs={"force": True},
-                     daemon=True).start()
-    return {"accepted": True, "source": name}
+    started = _start_refresh(name, force=True)
+    return {"accepted": True, "source": name, "already_running": not started}
 
 
 @app.post("/sources/{name}/pause")

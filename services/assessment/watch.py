@@ -23,6 +23,7 @@ from common import config
 from common.db import alerts, get_engine, watches
 from common.timeutil import iso, parse_iso, utcnow
 from services.assessment.core.explain import conjunction_text
+from services.assessment.core.timeline import REASONS
 from services.assessment.runner import RunError, execute, jsonable
 from services.assessment.schemas import RunRequest
 
@@ -150,7 +151,8 @@ def _compare(w, prev: dict | None, cur: dict) -> list[dict]:
             else:
                 if set(m["reasons"]) <= {"saa", "meteor_shower"}:
                     continue  # ЮАА и метеорные потоки известны заранее (геометрия, годовой прогноз) — не повод для тревоги
-                top = next(iter(m["reasons"]), "")
+                top = next((c for c in m["reasons"] if c not in ("saa", "meteor_shower")), "")
+                top = REASONS.get(top, top)
                 out.append({"severity": "warning", "kind": "worsened", "mechanism": name,
                             "message": f"{title}: условия ухудшились до «{LEVEL_TEXT[m['worst']]}» "
                                        f"({m['minutes']['undesirable']:.0f} мин; {top}).",

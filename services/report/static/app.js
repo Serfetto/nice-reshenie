@@ -2,8 +2,8 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const S = { mode: "history", run: null, res: null, sel: null, alerts: [], unread: 0, prevDuration: null,
-  tab: "map", detailsOpen: false, drawerMode: null };
+const S = { mode: "history", run: null, res: null, sel: null, alerts: [], prevDuration: null,
+  tab: "map", detailsOpen: false, drawerMode: null, page: "calc" };
 
 // ---------- словари: простые слова ----------
 const CLASS_COLOR = { critical: "#d64545", undesirable: "#e0a030", acceptable: "#3a9d5d", no_data: "#8a929c" };
@@ -221,19 +221,36 @@ async function loadRun(id) {
   S.pendingPlanChange = false;
   S.run = run;
   S.res = run.result;
-  history.replaceState(null, "", `?run=${id}`);
+  history.replaceState(null, "", `?run=${id}${location.hash}`);
   render();
   refreshRuns();
 }
 
 // ---------- главный экран ----------
+function renderRunMeta() {
+  const r = S.res, run = S.run;
+  const box = $("runMeta");
+  box.innerHTML = "";
+  put(box,
+    el("span", { class: "badge" }, r.mode === "now" ? `Сейчас · ${dm(r.as_of)} UTC` : `${MODE_TEXT[r.mode]} · ${dmy(r.as_of)} ${hm(r.as_of)} UTC`),
+    run.label ? el("b", {}, run.label) : null,
+    el("span", { class: "muted" }, `расчёт ${run.run_id} сохранён`),
+    el("a", { href: "#saved" }, "в сохранениях"),
+    el("button", { type: "button", class: "linkbtn", onclick: async () => {
+      const label = prompt("Название расчёта (видно в «Сохранениях»):", run.label || "");
+      if (label === null) return;
+      try {
+        const x = await api(`/api/a/runs/${run.run_id}/label`, { method: "POST", body: JSON.stringify({ label }) });
+        run.label = x.label; renderRunMeta(); refreshRuns();
+      } catch (e) { toast(e.message, "warning"); }
+    } }, run.label ? "переименовать" : "назвать"));
+}
+
 function render() {
   const r = S.res;
   $("empty").classList.add("hidden");
   $("result").classList.remove("hidden");
-  const badge = $("modeBadge");
-  badge.classList.remove("hidden");
-  badge.textContent = r.mode === "now" ? "Сейчас" : `${MODE_TEXT[r.mode]} · ${dmy(r.as_of)} ${hm(r.as_of)} UTC`;
+  renderRunMeta();
   S.byId = Object.fromEntries(r.windows.map((w) => [w.id, w]));
   const def = S.byId[r.recommendation.window] || S.byId[r.planned] || r.windows[0];
   S.sel = def?.id;
@@ -726,7 +743,6 @@ function showTab(tab) {
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   for (const t of ["map", "sources", "verify", "export"]) $(`tab-${t}`).classList.toggle("hidden", t !== tab);
   if (tab === "map" && S.res) renderMap();
-  if (tab === "sources") loadLiveSources();
 }
 
 function renderSources() {
@@ -753,46 +769,24 @@ function renderSources() {
       r.orbit.age_at_cutoff_h >= 0 ? `${num(r.orbit.age_at_cutoff_h, 1)} ч` : `эпоха позже выбранного момента на ${num(-r.orbit.age_at_cutoff_h, 1)} ч (разбор по архиву)`,
       el("b", {}, "TLE"), el("code", {}, `${r.orbit.line1}\n${r.orbit.line2}`)),
     el("h3", {}, "Сбор данных прямо сейчас"),
-    el("p", { class: "hint" }, "«Заморозить» здесь останавливает обновление источника для всех пользователей сервиса (не дольше 2 ч). " +
-      "Чтобы проверить поведение при сбое только в своём расчёте, используйте «Дополнительно» → «Проверка сбоя» в форме."),
-    el("div", { id: "liveSources", class: "tablewrap" }, "загрузка…"));
-}
-
-async function loadLiveSources() {
-  const box = document.getElementById("liveSources");
-  let list;
-  try { list = await api("/api/i/sources"); } catch (e) { if (box) box.textContent = `сбор данных недоступен: ${e.message}`; return; }
-  renderChips(list);
-  if (!box) return;
-  const act = async (name, what) => {
-    try { await api(`/api/i/sources/${name}/${what}`, { method: "POST" }); toast(`${name}: ${what === "refresh" ? "обновляю" : what === "pause" ? "заморожен" : "возобновлён"}`); }
-    catch (e) { toast(e.message, "warning"); }
-    setTimeout(loadLiveSources, 1500);
-  };
-  box.innerHTML = "";
-  box.append(el("table", { class: "tbl" },
-    el("thead", {}, el("tr", {}, ...["Источник", "Состояние", "Последние данные, UTC", "Давность", "Последняя успешная загрузка, UTC",
-      "Как часто", "Ошибка", ""].map((h) => el("th", {}, h)))),
-    el("tbody", {}, ...list.map((s) => el("tr", {},
-      el("td", { title: s.title || "" }, s.title || s.source), el("td", {}, el("span", { class: `chip ${s.status}` }, s.status)),
-      el("td", {}, dm(s.latest_data)), el("td", { class: "num" }, ageText(s.age_s)), el("td", {}, dm(s.last_success)),
-      el("td", { class: "num" }, ageText(s.interval_s)), el("td", { title: s.last_error || "" }, (s.last_error || "—").slice(0, 40)),
-      el("td", {}, el("button", { class: "btn", type: "button", onclick: () => act(s.source, "refresh") }, "обновить"), " ",
-        s.paused ? el("button", { class: "btn", type: "button", title: s.paused_until ? `снимется сама в ${dm(s.paused_until)} UTC` : "",
-          onclick: () => act(s.source, "resume") }, "возобновить")
-          : el("button", { class: "btn", type: "button", onclick: () => act(s.source, "pause") }, "заморозить")))))));
+    el("p", {}, el("a", { class: "btn", href: "#sources" }, "Раздел «Источники» →"), " ",
+      el("span", { class: "hint" }, "состояние каждого источника, адреса, обновление вручную")));
 }
 
 function renderChips(list) {
   const bad = list.filter((s) => !["ok"].includes(s.status));
   const box = $("srcChips");
   box.innerHTML = "";
-  box.append(el("span", { class: `chip ${bad.length ? "stale" : "ok"}`, title: bad.map((s) => `${s.title || s.source}: ${s.status}`).join("\n") },
+  const cnt = $("srcCount");
+  cnt.textContent = String(bad.length);
+  cnt.classList.toggle("hidden", !bad.length);
+  cnt.classList.toggle("warn", bad.length > 0);
+  box.append(el("a", { href: "#sources", class: `chip ${bad.length ? "stale" : "ok"}`, title: bad.map((s) => `${s.title || s.source}: ${STATE_TEXT[s.status] || s.status}`).join("\n") },
     bad.length ? `данные: ${bad.length} из ${list.length} с замечаниями` : `данные: все ${list.length} источников в порядке`));
   const paused = list.filter((s) => s.paused).map((s) => `${OVERRIDE_SOURCES[s.source] || s.title || s.source}` +
     (s.paused_until ? ` до ${hm(s.paused_until)} UTC` : ""));
-  if (paused.length) box.append(el("span", { class: "chip paused", title: "Обновление заморожено для всех пользователей. " +
-    "Возобновить — «Подробности» → «Данные и источники». Проверить сбой только для своего расчёта — «Дополнительно» в форме." },
+  if (paused.length) box.append(el("a", { href: "#sources", class: "chip paused", title: "Обновление заморожено для всех пользователей. " +
+    "Возобновить — раздел «Источники». Проверить сбой только для своего расчёта — «Дополнительно» в форме." },
   `заморожено: ${paused.join(", ")}`));
   const b = S.boot;
   if (b && (b.state === "running" || b.state === "errors")) {
@@ -881,11 +875,12 @@ async function createWatch(id) {
     body.sim_step_min = 30;
   }
   try {
-    await api("/api/a/watches", { method: "POST", body: JSON.stringify(body) });
+    const { watch_id } = await api("/api/a/watches", { method: "POST", body: JSON.stringify(body) });
     toast(body.mode === "now" ? `Слежу за выходом ${dm(w.start)}. Если станет хуже — придёт предупреждение.`
-      : `Прокручиваю тот день с ${dm(body.as_of)} в ускоренном времени (30 мин за ~5 с). Предупреждения появятся справа.`);
+      : `Прокручиваю тот день с ${dm(body.as_of)} в ускоренном времени (30 мин за ~5 с). Сообщения — в разделе «Оповещения».`);
     ensureNotifyPermission();
-    openAlerts();
+    S.alertWatch = watch_id;  // раздел «Оповещения» откроется с сообщениями этого отслеживания
+    location.hash = "alerts";
   } catch (e) { toast(e.message, "warning"); }
 }
 
@@ -895,59 +890,21 @@ function ensureNotifyPermission() {
 
 function onAlert(a) {
   S.alerts.push(a);
-  if (a.severity !== "info") S.unread += 1;
   updateBell();
   toast(`${a.severity === "critical" ? "СТОП-ФАКТОР · " : ""}${a.message}`, a.severity, a.severity === "critical" ? 15000 : 8000);
   if ("Notification" in window && Notification.permission === "granted" && a.severity !== "info") {
     try { new Notification("ВКД · предупреждение", { body: a.message.slice(0, 200) }); } catch { /* нет поддержки */ }
   }
-  if (S.drawerMode === "alerts") renderAlerts();
+  if (S.page === "alerts") renderAlertsPage();
 }
 
+// счётчик в меню — непринятые предупреждения и стоп-факторы
 function updateBell() {
-  $("bellCount").textContent = String(S.unread);
-  $("bell").classList.toggle("has", S.unread > 0);
-}
-
-async function openAlerts() {
-  S.drawerMode = "alerts";
-  S.unread = 0;
-  updateBell();
-  $("drawerTitle").textContent = "Предупреждения";
-  openDrawer();
-  await renderAlerts();
-}
-
-async function renderAlerts() {
-  const body = $("drawerBody");
-  let watches = [];
-  try { watches = await api("/api/a/watches?limit=10"); } catch { /* покажем пусто */ }
-  const labels = Object.fromEntries(watches.map((w) => [w.watch_id, w.label || w.watch_id]));
-  body.innerHTML = "";
-  const perm = "Notification" in window ? Notification.permission : "unsupported";
-  body.append(el("p", { class: "hint" }, "Система следит за выбранным временем выхода и присылает сообщение, когда обстановка меняется: " +
-    "появился стоп-фактор, стало хуже, пропали данные, стало лучше. Сообщения приходят сюда, в уведомления браузера" +
-    (perm === "granted" ? " (включены)" : "") + " и в Telegram, если он настроен."));
-  if (perm === "default") body.append(el("button", { class: "btn", type: "button",
-    onclick: () => Notification.requestPermission().then(renderAlerts) }, "Включить уведомления браузера"));
-  body.append(el("h3", {}, "За чем слежу"));
-  if (!watches.length) body.append(el("p", { class: "muted" }, "Пока ни за чем. Нажмите «Следить…» или «Показать предупреждения…» под ответом."));
-  watches.forEach((w) => body.append(el("div", { class: "ev" },
-    el("div", { class: "h" }, el("b", {}, w.label || w.watch_id),
-      el("span", { class: "flag" }, w.mode === "replay" ? "прокрутка прошлого дня" : "в реальном времени"),
-      el("span", { class: `flag ${w.status === "active" ? "" : "warn"}` }, { active: "идёт", finished: "закончено", expired: "окно прошло", stopped: "остановлено" }[w.status] || w.status),
-      w.status === "active" ? el("button", { class: "btn", type: "button", onclick: async () => { await api(`/api/a/watches/${w.watch_id}/stop`, { method: "POST" }); renderAlerts(); } }, "остановить") : null),
-    el("div", { class: "muted" }, `Выход ${dm(w.window_start)}–${hm(w.window_end)} UTC` +
-      (w.mode === "replay" ? ` · время в прокрутке: ${dm(w.sim_time)}` : ` · последняя проверка ${dm(w.last_check_at)}`) + ` · сообщений ${w.n_alerts || 0}`),
-    w.error ? el("div", { class: "err" }, w.error) : null)));
-  body.append(el("h3", {}, "Сообщения"));
-  const list = [...S.alerts].reverse().slice(0, 60);
-  if (!list.length) body.append(el("p", { class: "muted" }, "Сообщений пока нет."));
-  list.forEach((a) => body.append(el("div", { class: `alert ${a.severity} ${a.ack_at ? "acked" : ""}` },
-    el("div", { class: "meta" }, `${labels[a.watch_id] || a.watch_id} · на момент ${dm(a.as_of)} UTC`),
-    el("div", {}, a.message),
-    !a.ack_at && a.severity !== "info" ? el("button", { class: "btn", type: "button", onclick: async () => {
-      await api(`/api/a/alerts/${a.id}/ack`, { method: "POST" }); a.ack_at = new Date().toISOString(); renderAlerts(); } }, "принято") : null)));
+  const open = S.alerts.filter((a) => !a.ack_at && a.severity !== "info");
+  const b = $("bellCount");
+  b.textContent = String(open.length);
+  b.classList.toggle("crit", open.some((a) => a.severity === "critical"));
+  b.classList.toggle("warn", open.length > 0);
 }
 
 function connectAlerts() {
@@ -956,7 +913,8 @@ function connectAlerts() {
 }
 
 async function loadRecentAlerts() {
-  try { S.alerts = (await api("/api/a/alerts?limit=200")).slice(-100); } catch { /* сервис может ещё стартовать */ }
+  try { S.alerts = (await api("/api/a/alerts?newest=1&limit=300")).reverse(); } catch { /* сервис может ещё стартовать */ }
+  updateBell();
 }
 
 // ---------- помощь ----------
@@ -966,6 +924,14 @@ function openHelp() {
   const b = $("drawerBody");
   b.innerHTML = `<div class="help">
   <p>Консоль отвечает на вопрос: <b>когда лучше начать выход в открытый космос и почему</b>.</p>
+  <h4>Разделы</h4>
+  <ul>
+    <li><b>Расчёт</b> — выбрать момент и длительность, получить лучшее время начала и объяснение.</li>
+    <li><b>Источники</b> — все источники, которые сервис скачивает: что в них, откуда, насколько свежие данные.
+      Любой можно обновить сейчас или все сразу.</li>
+    <li><b>Оповещения</b> — за какими выходами идёт слежение и сообщения об изменении обстановки.</li>
+    <li><b>Сохранения</b> — все сделанные расчёты: открыть заново, назвать, скачать отчёт, удалить.</li>
+  </ul>
   <h4>Три шага</h4>
   <ol>
     <li><b>Момент.</b> «Сейчас» — живые данные. «Прошлая дата» — реальный день 2024 года: система считает так, будто
@@ -1006,9 +972,10 @@ function openHelp() {
     <span><i class="c-critical"></i>стоп-фактор — выход не рекомендуется</span><span><i class="c-no_data"></i>нет данных — оценить нельзя</span></div>
   <h4>Предупреждения</h4>
   <p>«Следить…» — система будет пересчитывать выбранное время и пришлёт сообщение, если станет хуже.
-    Для прошлой даты — «Показать предупреждения, как в тот день»: день прокручивается ускоренно, и видно, когда пришло бы предупреждение.</p>
+    Для прошлой даты — «Показать предупреждения, как в тот день»: день прокручивается ускоренно, и видно, когда пришло бы предупреждение.
+    Все сообщения — в разделе «Оповещения»; число в меню — сколько предупреждений ещё не отмечены «принято».</p>
   <h4>Подробности</h4>
-  <p>Кнопка под полосой: графики обстановки, таблица всех вариантов, карта пути станции, источники данных,
+  <p>Кнопка под полосой: графики обстановки, таблица всех вариантов, карта пути станции, данные этого расчёта,
     «Что было на самом деле» (для прошлой даты) и сохранение отчёта.</p>
   <h4>Словарь</h4>
   <ul>
@@ -1028,17 +995,41 @@ function openHelp() {
 }
 
 // ---------- история ----------
+const durText = (m) => (m ? `${Math.floor(m / 60)} ч ${m % 60} мин` : "—");
+const runMoment = (q) => (q.mode === "now" ? "Сейчас" : `${dmy(q.as_of)} ${hm(q.as_of)}`);
+
 async function refreshRuns() {
   let list = [];
-  try { list = await api("/api/a/runs?limit=10"); } catch { return; }
+  try { list = await api("/api/a/runs?limit=6&kind=assessment"); } catch { return; }
   const ul = $("runsList");
   ul.innerHTML = "";
-  list.filter((r) => r.kind === "assessment").forEach((r) => {
+  list.forEach((r) => {
     const q = r.request || {};
-    ul.append(el("li", { onclick: () => loadRun(r.run_id).catch((e) => toast(e.message, "warning")) },
-      `${q.mode === "now" ? "Сейчас" : `${dmy(q.as_of)} ${hm(q.as_of)}`} · ${Math.floor(q.duration_min / 60)} ч ${q.duration_min % 60} мин`,
-      el("span", { class: "s" }, r.status === "done" ? "" : r.status)));
+    ul.append(el("li", { class: S.run?.run_id === r.run_id ? "on" : "", onclick: () => loadRun(r.run_id).catch((e) => toast(e.message, "warning")) },
+      r.label ? el("b", {}, r.label, el("br")) : null,
+      `${runMoment(q)} · ${durText(q.duration_min)}`,
+      el("span", { class: "s" }, r.status === "done" ? "" : r.status === "failed" ? "ошибка" : "идёт")));
   });
+  if (!list.length) ul.append(el("li", { class: "muted empty-li" }, "Пока нет — начните с примера выше"));
+}
+
+// ---------- разделы ----------
+const PAGES = ["calc", "sources", "alerts", "saved"];
+
+function route() {
+  const page = PAGES.includes(location.hash.slice(1)) ? location.hash.slice(1) : "calc";
+  const prev = S.page;
+  S.page = page;
+  for (const p of PAGES) $(`page-${p}`).classList.toggle("hidden", p !== page);
+  document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.page === page));
+  if (page !== prev) window.scrollTo(0, 0);
+  stopPagePolling();
+  if (page === "sources") openSourcesPage();
+  if (page === "alerts") openAlertsPage();
+  if (page === "saved") openSavedPage();
+  if (page === "calc" && prev !== "calc") {  // графики, нарисованные до переключения, подгоняем под ширину
+    for (const id of ["timeline", "map"]) if ($(id).layout) Plotly.Plots.resize(id);
+  }
 }
 
 // ---------- запуск ----------
@@ -1069,8 +1060,10 @@ function init() {
   });
   document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
   $("drawerClose").addEventListener("click", closeDrawer);
-  $("bell").addEventListener("click", openAlerts);
   $("helpBtn").addEventListener("click", openHelp);
+  initPages();
+  window.addEventListener("hashchange", route);
+  route();
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
   const tick = () => { $("clock").textContent = new Date().toISOString().slice(11, 16) + " UTC"; };
   tick(); setInterval(tick, 10000);

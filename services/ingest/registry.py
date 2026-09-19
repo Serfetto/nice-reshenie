@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import date
 
 from sqlalchemy.engine import Engine
@@ -28,6 +29,10 @@ BACKFILL_ORDER = ["swpc_alerts", "iss_spacetrack", "kp_observed", "swpc_3day", "
                   "goes_protons", "catalog_spacetrack"]
 
 
+# одна загрузка источника за раз: ручное обновление из консоли ждёт плановое, а не идёт параллельно
+_LOCKS: dict[str, threading.Lock] = {name: threading.Lock() for name in ADAPTERS}
+
+
 def get(name: str) -> Adapter:
     if name not in ADAPTERS:
         raise KeyError(f"Неизвестный источник: {name}")
@@ -36,6 +41,12 @@ def get(name: str) -> Adapter:
 
 def run_live(engine: Engine, name: str, *, force: bool = False) -> IngestResult:
     adapter = get(name)
+    with _LOCKS[name]:
+        return _run_live(engine, adapter, force=force)
+
+
+def _run_live(engine: Engine, adapter: Adapter, *, force: bool) -> IngestResult:
+    name = adapter.name
     with engine.begin() as conn:
         if not force and is_paused(conn, name):
             return IngestResult(name, skipped=1)
