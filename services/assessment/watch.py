@@ -16,12 +16,12 @@ import threading
 import uuid
 from datetime import datetime, timedelta
 
-import httpx
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from common import config
 from common.db import alerts, get_engine, watches
 from common.timeutil import iso, msk, parse_iso, utcnow
+from services.assessment import telegram
 from services.assessment.core.explain import conjunction_text
 from services.assessment.core.timeline import REASONS
 from services.assessment.runner import RunError, execute, jsonable
@@ -30,9 +30,13 @@ from services.assessment.schemas import RunRequest
 log = logging.getLogger(__name__)
 
 RANK = {"acceptable": 0, "undesirable": 1, "no_data": 2, "critical": 3}
-LEVEL_TEXT = {"acceptable": "приемлемо", "undesirable": "нежелательно", "no_data": "нет данных",
-              "critical": "критично"}
-MECH_TEXT = {"radiation": "Радиация", "mmod": "Мусор и метеороиды"}
+# те же слова, что в консоли
+LEVEL_TEXT = {"acceptable": "без замечаний", "undesirable": "нежелательно", "no_data": "нет данных",
+              "critical": "стоп-фактор"}
+MECH_TEXT = {"radiation": "Частицы от Солнца", "mmod": "Мусор и метеороиды"}
+KIND_TEXT = {"observation": "измерение", "forecast_team": "наш прогноз", "forecast_external": "прогноз SWPC",
+             "probability": "вероятность по прогнозу SWPC", "message": "сообщение SWPC", "geometry": "расчёт орбиты"}
+CONF_TEXT = {"high": "высокая", "medium": "средняя", "low": "низкая", "none": "нет"}
 TICK_S = float(os.getenv("WATCH_TICK_S", "5"))
 NOW_INTERVAL_S = float(os.getenv("WATCH_NOW_INTERVAL_S", "120"))
 
@@ -73,7 +77,11 @@ def stop(wid: str) -> bool:
     with get_engine().begin() as conn:
         res = conn.execute(update(watches).where(watches.c.id == wid, watches.c.status == "active")
                            .values(status="stopped"))
-    return res.rowcount > 0
+        w = conn.execute(select(watches).where(watches.c.id == wid)).first() if res.rowcount else None
+    if w is not None:  # сообщение о завершении — в фоне, чтобы консоль не ждала Telegram
+        as_of = w.sim_time if w.mode == "replay" else utcnow()
+        threading.Thread(target=_finished_note, args=(w, "stopped", as_of), daemon=True).start()
+    return w is not None
 
 
 def notify_new_data() -> None:
@@ -117,10 +125,11 @@ def _compare(w, prev: dict | None, cur: dict) -> list[dict]:
     ret_min = (w.request.get("eva") or {}).get("return_to_airlock_min", 30)
     now = parse_iso(cur["as_of"])
     if prev is None:
-        parts = [f"{MECH_TEXT.get(n, n)}: {LEVEL_TEXT[m['worst']]}" for n, m in cur["mechanisms"].items()]
+        parts = [f"{MECH_TEXT.get(n, n)} — {LEVEL_TEXT[m['worst']]}" for n, m in cur["mechanisms"].items()]
         out.append({"severity": "info", "kind": "watch_started", "mechanism": None,
-                    "message": f"Отслеживание начато. Окно {msk(cur['window']['start'])}–"
-                               f"{msk(cur['window']['end'])} МСК: " + "; ".join(parts) + "."})
+                    "message": f"Слежение включено, окно {msk(cur['window']['start'])}–{msk(cur['window']['end'])} МСК. "
+                               f"Сейчас: " + "; ".join(parts) + ". Дальше сообщение придёт, только если обстановка "
+                               "изменится."})
         prev = {"mechanisms": {n: {"worst": "acceptable", "first_critical": None} for n in cur["mechanisms"]}}
         # сразу сообщаем о неблагоприятном начальном состоянии
     for name, m in cur["mechanisms"].items():
@@ -132,8 +141,9 @@ def _compare(w, prev: dict | None, cur: dict) -> list[dict]:
                 fc = m["first_critical"] or {}
                 t_crit = parse_iso(fc.get("from")) if fc.get("from") else None
                 lead = (t_crit - now).total_seconds() / 60 if t_crit else None
-                msg = (f"{title}: КРИТИЧНО в окне с {msk(fc.get('from'))} МСК —{fc.get('reason', '')} "
-                       f"({fc.get('kind', '')}, уверенность {fc.get('confidence', '')}).")
+                msg = (f"{title}: СТОП-ФАКТОР в окне с {msk(fc.get('from'))} МСК — {fc.get('reason', '')} "
+                       f"({KIND_TEXT.get(fc.get('kind'), fc.get('kind', ''))}, "
+                       f"надёжность {CONF_TEXT.get(fc.get('confidence'), fc.get('confidence', ''))}).")
                 if fc.get("detail"):
                     msg += f" Подробно: {fc['detail']}."
                 if cur["in_progress"] and lead is not None:
@@ -164,31 +174,28 @@ def _compare(w, prev: dict | None, cur: dict) -> list[dict]:
     return out
 
 
-def _send_telegram(text: str) -> str | None:
-    token, chat = config.secret("TELEGRAM_BOT_TOKEN"), config.secret("TELEGRAM_CHAT_ID")
-    if not token or not chat:
-        return "не настроен"
-    try:
-        r = httpx.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                       data={"chat_id": chat, "text": text}, timeout=15)
-        return "ok" if r.status_code == 200 else f"HTTP {r.status_code}"
-    except Exception as e:
-        return f"ошибка: {e}"
+# заголовок сообщения в Telegram: сразу видно, что случилось
+TG_HEAD = {"watch_started": "🔔 Слежение включено", "watch_finished": "🏁 Слежение завершено",
+           "critical_in_window": "🟥 СТОП-ФАКТОР", "worsened": "🟧 Стало хуже", "data_lost": "⬜ Пропали данные",
+           "improved": "✅ Стало лучше"}
 
 
-def _deliver(w, items: list[dict], cur: dict) -> None:
+def _telegram_text(w, it: dict, as_of: datetime) -> str:
+    head = TG_HEAD.get(it["kind"], "ℹ️ Оповещение")
+    replay = " · прокрутка прошлого дня" if w.mode == "replay" else ""
+    return (f"{head}\n{w.label or w.id}: выход {msk(w.window_start, '%d.%m %H:%M')}–{msk(w.window_end)} МСК{replay}\n"
+            f"Обстановка на {msk(as_of, '%d.%m %H:%M')} МСК.\n\n{it['message']}")
+
+
+def _deliver(w, items: list[dict], as_of: datetime, latest: datetime | None = None) -> None:
     if not items:
         return
     now = utcnow()
-    as_of = parse_iso(cur["as_of"])
-    latest = parse_iso(cur["latest_issued"]) if cur.get("latest_issued") else None
     rows = []
     for it in items:
         delivered = {"web": "ok"}
-        if "telegram" in (w.channels or []) and it["severity"] != "info":
-            prefix = "[ПРОИГРЫВАНИЕ] " if w.mode == "replay" else ""
-            delivered["telegram"] = _send_telegram(f"{prefix}ВКД {w.label or w.id} · {msk(as_of, '%d.%m %H:%M')} МСК\n"
-                                                   f"{it['message']}")
+        if "telegram" in (w.channels or []):
+            delivered["telegram"] = telegram.deliver(_telegram_text(w, it, as_of))
         rows.append({"watch_id": w.id, "created_at": now, "as_of": as_of, "severity": it["severity"],
                      "kind": it["kind"], "mechanism": it.get("mechanism"), "message": it["message"],
                      "details": jsonable(it.get("details") or {}), "data_latest_issued": latest,
@@ -197,7 +204,15 @@ def _deliver(w, items: list[dict], cur: dict) -> None:
     with get_engine().begin() as conn:
         conn.execute(alerts.insert(), rows)
         conn.execute(update(watches).where(watches.c.id == w.id)
-                     .values(n_alerts=(w.n_alerts or 0) + len(rows)))
+                     .values(n_alerts=func.coalesce(watches.c.n_alerts, 0) + len(rows)))
+
+
+def _finished_note(w, why: str, as_of: datetime) -> None:
+    """Слежение закончилось — сообщить, чтобы тишина не выглядела как «бот сломался»."""
+    msg = {"finished": "Прокрутка дня закончена — слежение за этим выходом завершено.",
+           "expired": "Окно выхода прошло — слежение завершено.",
+           "stopped": "Слежение остановлено вручную."}[why]
+    _deliver(w, [{"severity": "info", "kind": "watch_finished", "mechanism": None, "message": msg}], as_of)
 
 
 def _process(w) -> None:
@@ -208,7 +223,10 @@ def _process(w) -> None:
         if as_of > w.sim_end:
             values["status"] = "finished"
             with get_engine().begin() as conn:
-                conn.execute(update(watches).where(watches.c.id == w.id).values(**values))
+                done = conn.execute(update(watches).where(watches.c.id == w.id, watches.c.status == "active")
+                                    .values(**values)).rowcount
+            if done:
+                _finished_note(w, "finished", w.sim_end)
             return
         values["sim_time"] = as_of + timedelta(minutes=w.sim_step_min or 30)
     else:
@@ -218,14 +236,17 @@ def _process(w) -> None:
     try:
         cur = _snapshot(w, as_of)
         items = _compare(w, w.last_snapshot, cur)
-        _deliver(w, items, cur)
+        _deliver(w, items, parse_iso(cur["as_of"]), parse_iso(cur.get("latest_issued")))
         values["last_snapshot"] = cur
         values["error"] = None
     except Exception as e:
         log.exception("Отслеживание %s: ошибка расчёта", w.id)
         values["error"] = f"{type(e).__name__}: {e}"
     with get_engine().begin() as conn:
-        conn.execute(update(watches).where(watches.c.id == w.id).values(**values))
+        done = conn.execute(update(watches).where(watches.c.id == w.id, watches.c.status == "active")
+                            .values(**values)).rowcount
+    if done and values.get("status") == "expired":
+        _finished_note(w, "expired", now)
 
 
 def tick(force_now: bool = False) -> None:

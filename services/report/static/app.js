@@ -912,11 +912,12 @@ async function createWatch(id) {
     body.sim_step_min = 30;
   }
   try {
-    const { watch_id } = await api("/api/a/watches", { method: "POST", body: JSON.stringify(body) });
-    toast(body.mode === "now" ? `Слежу за выходом ${dm(w.start)}. Если станет хуже — придёт предупреждение.`
-      : `Прокручиваю тот день с ${dm(body.as_of)} в ускоренном времени (30 мин за ~5 с). Сообщения — в разделе «Оповещения».`);
+    const x = await api("/api/a/watches", { method: "POST", body: JSON.stringify(body) });
+    // раздел «Оповещения» откроется с подтверждением и сообщениями именно этого слежения
+    S.justWatch = { ...x, mode: body.mode, label: body.label, start: w.start, end: w.end, simFrom: body.as_of };
+    S.alertWatch = x.watch_id;
+    toast(`🔔 Слежение включено: выход ${dm(w.start)}–${hm(w.end)} МСК`);
     ensureNotifyPermission();
-    S.alertWatch = watch_id;  // раздел «Оповещения» откроется с сообщениями этого отслеживания
     location.hash = "alerts";
   } catch (e) { toast(e.message, "warning"); }
 }
@@ -947,6 +948,10 @@ function updateBell() {
 function connectAlerts() {
   const es = new EventSource("/api/alerts/stream");
   es.addEventListener("alert", (e) => onAlert(JSON.parse(e.data)));
+  // состояние канала «эта страница» — для блока «Куда приходят оповещения»
+  const live = (ok) => { if (S.sseOk !== ok) { S.sseOk = ok; if (S.page === "alerts") renderChannels(); } };
+  es.addEventListener("open", () => live(true));
+  es.addEventListener("error", () => live(false));
 }
 
 async function loadRecentAlerts() {
@@ -1010,7 +1015,9 @@ function openHelp() {
   <h4>Предупреждения</h4>
   <p>«Следить…» — система будет пересчитывать выбранное время и пришлёт сообщение, если станет хуже.
     Для прошлой даты — «Показать предупреждения, как в тот день»: день прокручивается ускоренно, и видно, когда пришло бы предупреждение.
-    Все сообщения — в разделе «Оповещения»; число в меню — сколько предупреждений ещё не отмечены «принято».</p>
+    Все сообщения — в разделе «Оповещения»; число в меню — сколько предупреждений ещё не отмечены «принято».
+    Чтобы получать их в Telegram, откройте бота (ссылка в разделе «Оповещения») и нажмите «Start» —
+    бот ответит «✅ Оповещения подключены».</p>
   <h4>Подробности</h4>
   <p>Кнопка под полосой: графики обстановки, таблица всех вариантов, карта пути станции, данные этого расчёта,
     «Что было на самом деле» (для прошлой даты) и сохранение отчёта.</p>

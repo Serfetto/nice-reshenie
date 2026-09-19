@@ -255,7 +255,9 @@ async function openAlertsPage() {
 
 async function pollWatches() {
   clearTimeout(S.watchTimer);
-  try { S.watches = await api("/api/a/watches?limit=50"); } catch { /* сервис оценки может перезапускаться */ }
+  const [w, n] = await Promise.all([api("/api/a/watches?limit=50").catch(() => null), api("/api/a/notify/status").catch(() => null)]);
+  if (w) S.watches = w;  // сервис оценки может перезапускаться — оставляем прошлое состояние
+  if (n) S.notify = n;
   if (S.page !== "alerts") return;
   renderAlertsPage();
   S.watchTimer = setTimeout(pollWatches, S.watches.some((w) => w.status === "active") ? 4000 : 30000);
@@ -276,8 +278,8 @@ function renderAlertsPage() {
     el("div", { class: `stat ${open.length - crit ? "warn" : ""}` }, el("b", {}, open.length - crit), el("span", {}, "непринятых предупреждений")),
     el("div", { class: "stat" }, el("b", {}, S.alerts.length), el("span", {}, "сообщений всего")));
 
-  const perm = "Notification" in window ? Notification.permission : "unsupported";
-  $("notifBtn").classList.toggle("hidden", perm !== "default");
+  renderWatchBanner();
+  renderChannels();
   const ack = $("ackAllBtn");
   ack.disabled = !open.length;
   ack.textContent = f.watch ? "Принять все по этому выходу" : "Принять все";
@@ -311,6 +313,124 @@ function renderAlertsPage() {
   list.slice(0, 200).forEach((a) => feed.append(alertItem(a, labels)));
 }
 
+// ---- подтверждение «слежение включено» и каналы доставки ----
+function tgChatsText(tg) {
+  const names = (tg.chats || []).map((c) => c.title);
+  if (tg.env_chat) names.push("чат из .env");
+  return names.join(", ");
+}
+
+function renderWatchBanner() {
+  const box = $("watchBanner"), j = S.justWatch;
+  box.innerHTML = "";
+  if (!j) return;
+  const w = S.watches.find((x) => x.watch_id === j.watch_id);
+  const started = S.alerts.some((a) => a.watch_id === j.watch_id && a.kind === "watch_started");
+  const tg = j.telegram;
+  const every = j.check_every_s >= 60 ? `${Math.round(j.check_every_s / 60)} мин` : `${j.check_every_s} с`;
+  const tgLine = !tg ? null
+    : tg.state === "ok" ? el("li", {}, `Telegram: сообщения придут в ${tg.chats} ${plural(tg.chats, ["чат", "чата", "чатов"])} (@${tg.bot_username}).`)
+      : tg.state === "no_chats" ? el("li", { class: "warn-text" }, "Telegram: пока никто не подключён — ",
+        tg.link ? el("a", { href: tg.link, target: "_blank", rel: "noopener" }, `откройте @${tg.bot_username}`) : "откройте бота",
+        " и нажмите «Start». Бот ответит «✅ Оповещения подключены», и следующие сообщения придут туда.")
+        : el("li", { class: "muted" }, "Telegram не настроен — сообщения будут здесь и в уведомлениях браузера.");
+  box.append(el("div", { class: "card banner-ok" },
+    el("div", { class: "src-h" },
+      el("h3", {}, `✅ Слежение включено: ${j.label || "выход"} · ${dm(j.start)}–${hm(j.end)} МСК`),
+      el("button", { type: "button", class: "btn", onclick: () => { S.justWatch = null; renderWatchBanner(); } }, "Понятно")),
+    el("ul", {},
+      j.mode === "replay"
+        ? el("li", {}, `Это прошлая дата: день прокручивается ускоренно с ${dm(j.simFrom)} МСК — полчаса за ~${every}. ` +
+          "Сообщения придут так, как пришли бы в тот день.")
+        : el("li", {}, `Система пересчитывает этот выход каждые ${every} и сразу, как приходят новые данные.`),
+      el("li", {}, "Сообщение приходит, только когда обстановка меняется: появился стоп-фактор, стало хуже, пропали данные, " +
+        "стало лучше. Тишина — значит, ничего не изменилось."),
+      el("li", {}, started ? "Первое сообщение — «Слежение включено» с текущей обстановкой — уже пришло, оно ниже."
+        : el("span", { class: "muted" }, "Проверяю обстановку… первое сообщение появится через несколько секунд.")),
+      tgLine,
+      w && w.status !== "active" ? el("li", { class: "muted" }, `Слежение уже ${WATCH_STATUS[w.status] || w.status}.`) : null)));
+}
+
+function renderChannels() {
+  const box = $("channels");
+  if (!box) return;
+  box.innerHTML = "";
+  const tile = (ok, title, ...body) => el("div", { class: `card channel ${ok === true ? "on" : ok === false ? "off" : "warn"}` },
+    el("div", { class: "ch-h" }, el("span", { class: "dot" }), el("b", {}, title)), ...body);
+
+  // эта страница (поток SSE)
+  box.append(tile(S.sseOk !== false, "Эта страница",
+    el("div", { class: "small" }, S.sseOk === false ? "Связь с сервером прервалась — переподключаюсь…"
+      : "Подключена: сообщения появляются сразу, без обновления страницы.")));
+
+  // уведомления браузера
+  const perm = "Notification" in window ? Notification.permission : "unsupported";
+  box.append(tile(perm === "granted" ? true : perm === "default" ? null : false, "Уведомления браузера",
+    el("div", { class: "small" }, { granted: "Включены: придут, даже если вкладка свёрнута.",
+      default: "Выключены — включите, чтобы не пропустить стоп-фактор, пока вкладка свёрнута.",
+      denied: "Запрещены в настройках браузера: значок замка слева от адреса → «Уведомления» → «Разрешить».",
+      unsupported: "Этот браузер их не поддерживает." }[perm]),
+    perm === "default" ? el("div", { class: "src-actions" }, el("button", { type: "button", class: "btn primary",
+      onclick: () => Notification.requestPermission().then(renderChannels) }, "Включить")) : null));
+
+  // Telegram
+  const tg = S.notify?.telegram;
+  if (!tg) { box.append(tile(null, "Telegram", el("div", { class: "small muted" }, "проверяю…"))); return; }
+  if (!tg.configured) {
+    box.append(tile(false, "Telegram", el("div", { class: "small" }, "Не настроен: нужен TELEGRAM_BOT_TOKEN в .env (бот от @BotFather).")));
+    return;
+  }
+  const bot = tg.bot_username ? el("a", { href: tg.link, target: "_blank", rel: "noopener" }, `@${tg.bot_username}`) : "бот";
+  const n = (tg.chats || []).length + (tg.env_chat ? 1 : 0);
+  const problem = !tg.polling && tg.error ? el("div", { class: "small warn-text" }, `Бот не принимает команды: ${tg.error}`) : null;
+  if (n) {
+    box.append(tile(true, "Telegram",
+      el("div", { class: "small" }, "Подключено: ", el("b", {}, tgChatsText(tg)), " · бот ", bot),
+      problem,
+      el("div", { class: "src-actions" },
+        el("button", { type: "button", class: "btn", onclick: testTelegram }, "Проверить связь"),
+        el("span", { class: "muted small" }, "придёт тестовое сообщение"))));
+  } else {
+    box.append(tile(false, "Telegram",
+      el("div", { class: "small" }, "Никто не подключён. Чтобы получать оповещения в Telegram:"),
+      el("ol", { class: "small steps" }, el("li", {}, "откройте бота ", bot, ";"),
+        el("li", {}, "нажмите «Start» — бот ответит «✅ Оповещения подключены»;"),
+        el("li", {}, "здесь появится ваше имя — готово.")),
+      tg.env_problem ? el("div", { class: "small muted" }, tg.env_problem) : null,
+      problem,
+      tg.link ? el("div", { class: "src-actions" }, el("a", { class: "btn primary", href: tg.link, target: "_blank", rel: "noopener" }, "Открыть бота")) : null));
+  }
+}
+
+async function testTelegram() {
+  try {
+    const x = await api("/api/a/notify/test", { method: "POST" });
+    const res = Object.entries(x.results);
+    const bad = res.filter(([, v]) => v !== "ok");
+    toast(bad.length ? `Telegram: не дошло в ${bad.map(([k, v]) => `${k} (${v})`).join(", ")}`
+      : `Telegram: тестовое сообщение отправлено — ${res.map(([k]) => k).join(", ")}. Проверьте чат.`, bad.length ? "warning" : "info", 10000);
+  } catch (e) { toast(e.message, "warning"); }
+  pollWatches();
+}
+
+// живой индикатор: видно, что слежение работает, и когда была последняя проверка
+function watchPulse(w) {
+  if (w.status !== "active") {
+    return el("div", { class: "pulse off small" }, el("span", { class: "dot" }),
+      `${WATCH_STATUS[w.status] || w.status}${w.last_check_at ? ` · последняя проверка ${dm(w.last_check_at)} МСК` : ""}`);
+  }
+  const every = w.mode === "replay" ? (S.notify?.watch_tick_s || 5) : (S.notify?.watch_now_interval_s || 120);
+  const age = w.last_check_at ? (Date.now() - Date.parse(w.last_check_at)) / 1000 : null;
+  const stale = age !== null && age > every * 3 + 60;
+  const next = w.last_check_at ? Date.parse(w.last_check_at) + every * 1000 : Date.now();
+  const text = w.mode === "replay"
+    ? `прокручиваю день · часы прокрутки ${dm(w.sim_time)} МСК`
+    : `слежу · проверено ${w.last_check_at ? relTime(w.last_check_at) : "—"} · следующая проверка ` +
+      (next > Date.now() ? relTime(new Date(next).toISOString()) : "сейчас");
+  return el("div", { class: `pulse ${stale ? "stale" : "on"} small` }, el("span", { class: "dot" }),
+    stale ? `давно не проверялось (${relTime(w.last_check_at)}) — сервис оценки мог перезапускаться` : text);
+}
+
 function watchCard(w) {
   const snap = w.last_snapshot;
   const sel = S.alertFilter.watch === w.watch_id;
@@ -321,8 +441,8 @@ function watchCard(w) {
       el("span", { class: `chip ${w.status === "active" ? "running" : "never"}` }, WATCH_STATUS[w.status] || w.status)),
     el("div", { class: "flags" },
       el("span", { class: "flag" }, w.mode === "replay" ? "прокрутка прошлого дня" : "в реальном времени"),
-      w.mode === "replay" ? el("span", { class: "flag" }, `часы прокрутки: ${dm(w.sim_time)} МСК`)
-        : el("span", { class: "flag" }, `проверено ${w.last_check_at ? relTime(w.last_check_at) : "—"}`)),
+      (w.channels || []).includes("telegram") ? el("span", { class: "flag" }, "+ Telegram") : null),
+    watchPulse(w),
     snap ? el("ul", { class: "mini" }, ...Object.entries(snap.mechanisms).map(([m, st]) =>
       el("li", {}, el("i", { style: `background:${CLASS_COLOR[st.worst]}` }), `${MECH_TEXT[m] || m}: ${CLASS_TEXT[st.worst] || st.worst}`)))
       : el("p", { class: "muted small" }, "ещё не проверялось"),
@@ -491,7 +611,6 @@ async function deleteSaved(r) {
 function initPages() {
   $("refreshAllBtn").addEventListener("click", refreshAll);
   $("ackAllBtn").addEventListener("click", ackAll);
-  $("notifBtn").addEventListener("click", () => Notification.requestPermission().then(renderAlertsPage));
   document.querySelectorAll("#sevSeg button").forEach((b) => b.addEventListener("click", () => {
     S.alertFilter.sev = b.dataset.sev;
     document.querySelectorAll("#sevSeg button").forEach((x) => x.classList.toggle("on", x === b));

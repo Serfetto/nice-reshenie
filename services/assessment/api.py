@@ -13,11 +13,12 @@ from common import config
 from common.db import alerts, get_engine, init_db, runs, watches
 from common.freshness import sources_overview
 from common.timeutil import iso, msk, utcnow
-from services.assessment import jobs, watch
+from services.assessment import jobs, telegram, watch
 from services.assessment.runner import RunError
 from services.assessment.schemas import RunRequest
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)  # иначе в журнал попадает адрес Bot API вместе с токеном бота
 
 
 @asynccontextmanager
@@ -26,6 +27,7 @@ async def lifespan(_app: FastAPI):
     jobs.fail_interrupted()
     if os.getenv("WATCHER", "1") == "1":
         watch.start_background()
+        telegram.start_background()  # приём /start, /status, /stop от бота (если задан токен)
     yield
 
 
@@ -179,7 +181,10 @@ def create_watch(body: dict = Body(..., examples=[{
         wid = watch.create(body)
     except (RunError, KeyError, ValueError) as e:
         raise HTTPException(422, str(e))
-    return {"watch_id": wid}
+    out = {"watch_id": wid, "check_every_s": watch.NOW_INTERVAL_S if body.get("mode", "now") == "now" else watch.TICK_S}
+    if "telegram" in (body.get("channels") or []):
+        out["telegram"] = telegram.brief_status()  # консоль сразу скажет, дойдут ли сообщения в Telegram
+    return out
 
 
 @app.get("/watches")
@@ -203,6 +208,23 @@ def stop_watch(wid: str):
     if not watch.stop(wid):
         raise HTTPException(404, "Нет активного отслеживания с таким id")
     return {"watch_id": wid, "status": "stopped"}
+
+
+@app.get("/notify/status")
+def notify_status():
+    """Куда доставляются оповещения: Telegram (бот, подключённые чаты, приём команд) и как часто идёт проверка."""
+    return {"telegram": telegram.status(), "watch_now_interval_s": watch.NOW_INTERVAL_S, "watch_tick_s": watch.TICK_S}
+
+
+@app.post("/notify/test")
+def notify_test():
+    """Проверка связи: тестовое сообщение во все подключённые чаты Telegram."""
+    if not telegram.token():
+        raise HTTPException(409, "Telegram не настроен: нет TELEGRAM_BOT_TOKEN в .env")
+    res = telegram.broadcast("🔔 Проверка связи: оповещения ВКД доходят до этого чата.\n\n" + telegram.watches_text())
+    if not res:
+        raise HTTPException(409, "Никто не подключён: откройте бота в Telegram и нажмите Start")
+    return {"results": res}
 
 
 @app.get("/alerts")

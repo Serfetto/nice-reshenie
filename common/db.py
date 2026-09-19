@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 
-from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, Integer, MetaData, String, Table, Text,
+from sqlalchemy import (JSON, BigInteger, Boolean, Column, DateTime, Float, Integer, MetaData, String, Table, Text,
                         UniqueConstraint, Index, create_engine, event, text)
 from sqlalchemy.engine import Engine
 
@@ -178,6 +178,17 @@ alerts = Table(
     Column("delivered", JSON),
     Column("ack_at", DateTime),
     Index("ix_alerts_watch", "watch_id", "id"),
+)
+
+
+# Чаты Telegram, подписанные на оповещения (пользователь нажал Start в боте)
+tg_chats = Table(
+    "tg_chats", metadata,
+    Column("chat_id", BigInteger, primary_key=True, autoincrement=False),
+    Column("title", Text),
+    Column("active", Boolean, nullable=False, default=True),
+    Column("subscribed_at", DateTime, nullable=False),
+    Column("last_error", Text),
 )
 
 
