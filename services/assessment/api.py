@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from sqlalchemy import select, update
@@ -48,6 +49,14 @@ def get_config():
 
 @app.post("/runs", status_code=202)
 def create_run(req: RunRequest):
+    if req.mode != "review":
+        # прогноз выбирает из будущих вариантов: окно, начатое до момента расчёта, рекомендовать нельзя
+        t = req.as_of if req.mode == "replay" else utcnow() - timedelta(minutes=15)
+        for title, v in (("Самое раннее начало", req.earliest_start), ("Плановое начало", req.planned_start)):
+            if v is not None and v < t:
+                raise HTTPException(422, f"{title} {iso(v)} раньше момента расчёта {iso(req.as_of or utcnow())}: "
+                                         "варианты для прогноза начинаются не раньше него. "
+                                         "Чтобы разобрать прошедшее, включите «Разбор».")
     run_id = jobs.submit_assessment(req)
     return {"run_id": run_id, "status": "queued"}
 

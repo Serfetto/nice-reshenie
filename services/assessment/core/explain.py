@@ -89,9 +89,12 @@ def build_explanation(ev: dict, notes: list[str], conjunctions: list[dict] | Non
                          f"но хуже по {', '.join(MECH_TITLES.get(x, x) for x in t['worse_in']) or '—'}; "
                          f"решено по правилу R4 ({t['resolved_by']}).")
         if rec["confidence"] == "low":
-            lines.append("Уверенность низкая: часть окна оценена только по суточной вероятности или допущениям, "
-                         "а дальше 12 ч с новыми орбитальными элементами могут появиться сближения — рекомендуется "
-                         "пересчитать ближе к началу работ.")
+            why = [f"{MECH_TITLES.get(m, m).lower()} — {'; '.join(st['confidence_reasons'])}"
+                   for m, st in best["mechanisms"].items()
+                   if st.get("confidence") == "low" and st.get("confidence_reasons")]
+            lines.append("Уверенность низкая: " + ("; ".join(why) if why else
+                         "часть окна оценена только по прогнозу или допущениям")
+                         + ". Рекомендуется пересчитать ближе к началу работ.")
     elif rec["status"] == "insufficient_basis":
         lines.append("Недостаточно оснований для рекомендации: во всех окнах без критических факторов "
                      "есть интервалы без данных. Отсутствие данных не означает благоприятную обстановку.")

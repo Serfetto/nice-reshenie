@@ -85,3 +85,14 @@ def test_meteor_statistics_ranked_after_radiation():
               "mmod": mech("mmod", [(120, 180, UNDESIRABLE, "meteor_shower")])}, latest=120)
     assert status(ev, 0)["status"] == "worse"
     assert ev["recommendation"]["window"] in (status(ev, 60)["id"], status(ev, 120)["id"])
+
+
+def test_low_confidence_reason_comes_from_weakest_points():
+    m = mech("radiation", [])
+    m.confidence[:] = "high"
+    m.conf_reason = np.full(len(m.times), "измерение", dtype=object)
+    late = m.times >= to_np(G0 + timedelta(minutes=90))
+    m.confidence[late] = "low"
+    m.conf_reason[late] = "прогноз 3–6 ч"
+    st = status(run({"radiation": m}), 0)["mechanisms"]["radiation"]
+    assert st["confidence"] == "low" and st["confidence_reasons"] == ["прогноз 3–6 ч"]
